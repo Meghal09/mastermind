@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MASTERMIND — Institutional Trading System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Unbounded:wght@700;900&display=swap" rel="stylesheet" />
+  <!-- React + Babel (no build step needed) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { color-scheme: dark; }
+    html, body, #root { height: 100%; }
+    body {
+      background: #06080F;
+      color: #94A3B8;
+      font-family: 'JetBrains Mono', monospace;
+      -webkit-font-smoothing: antialiased;
+    }
+    ::-webkit-scrollbar       { width: 3px; height: 3px; }
+    ::-webkit-scrollbar-track { background: #06080F; }
+    ::-webkit-scrollbar-thumb { background: #2D3A52; border-radius: 2px; }
+
+    @keyframes pulse  { 0%,100%{ opacity:.35 } 50%{ opacity:1 } }
+    @keyframes blink  { 0%,100%{ opacity:1   } 50%{ opacity:0 } }
+    @keyframes fadeUp { from{ opacity:0; transform:translateY(6px) } to{ opacity:1; transform:translateY(0) } }
+    @keyframes slideR { from{ opacity:0; transform:translateX(-6px)} to{ opacity:1; transform:translateX(0)} }
+
+    .fade-up { animation: fadeUp .35s ease both; }
+    .slide-r { animation: slideR .25s ease both; }
+
+    input[type=range] { -webkit-appearance:none; height:3px; border-radius:2px; outline:none; cursor:pointer; }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance:none; width:14px; height:14px;
+      border-radius:50%; cursor:pointer; border:2px solid #06080F;
+    }
+    input[type=text], input[type=password] {
+      font-family: 'JetBrains Mono', monospace;
+      background: #0F1525;
+      border: 1px solid rgba(255,255,255,0.1);
+      color: #E2E8F0;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12px;
+      width: 100%;
+      outline: none;
+      transition: border-color .2s;
+    }
+    input[type=text]:focus, input[type=password]:focus { border-color: #D4A843; }
+    button { cursor: pointer; font-family: inherit; transition: opacity .2s; }
+    button:hover { opacity: .85; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useCallback, useRef, useMemo, memo } = React;
+
+// ─────────────────────────────────────────────────────────────────
+// §1  DESIGN TOKENS
+// ─────────────────────────────────────────────────────────────────
+const C = {
+  gold:   "#D4A843",  blue:  "#38BDF8",
+  violet: "#A78BFA",  amber: "#FB923C",
+  green:  "#34D399",  red:   "#F87171",
+  s0: "#06080F", s1: "#0A0E1A", s2: "#0F1525", s3: "#161E30",
+  border: "rgba(255,255,255,0.07)",
+  muted: "#2D3A52", sub: "#5A6A88", body: "#94A3B8", bright: "#E2E8F0",
+};
+const RISK_C = { "Low": C.green, "Low-Med": "#86EFAC", "Medium": C.gold, "Med-High": C.amber, "High": C.red };
+
+// ─────────────────────────────────────────────────────────────────
+// §2  ORG DATA
+// ─────────────────────────────────────────────────────────────────
+const REGIMES = {
+  TRENDING_UP:     { label:"TRENDING UP",     color:C.green,  icon:"▲" },
+  TRENDING_DOWN:   { label:"TRENDING DOWN",   color:C.red,    icon:"▼" },
+  RANGING:         { label:"RANGING",         color:C.gold,   icon:"◆" },
+  VOL_EXPANSION:   { label:"VOL EXPANSION",   color:C.amber,  icon:"⚡" },
+  FUNDING_EXTREME: { label:"FUNDING EXTREME", color:C.violet, icon:"◎" },
+};
+
+const DIRECTOR = {
+  name:"MASTERMIND", role:"Director — Knowledge Repository", icon:"◈", color:C.gold,
+  skills:["Regime Classification","Conflict Resolution","Risk Architecture","Capital Allocation","Improvement Planning","Knowledge Repository"],
+  description:"Holds complete institutional knowledge of all 14 agents, 3 teams, and all market conditions. Receives escalated problems from Team Leads, resolves with expertise, and issues directives down the chain.",
+};
+
+const TEAMS = [
+  { id:"alpha", name:"TEAM ALPHA", division:"Trend Division", color:C.blue,
+    lead:  { name:"ATLAS",   role:"Team Lead",      icon:"▲", skills:["Trend ID","Entry Timing","Multi-TF Align","ATR Filter","Pullback Entry"] },
+    senior:{ name:"VEGA",    role:"Senior Analyst", icon:"◉", skills:["Signal Aggregation","Agent Coordination","Conflict Resolution","Perf Monitor"] },
+    agents:[
+      { id:2,  name:"EMA Cross",      type:"Trend",    risk:"Medium",   tf:"Intraday",  alloc:6,  activeIn:["TRENDING_UP","TRENDING_DOWN"],                     desc:"EMA crossover alignment with volatility confirmation." },
+      { id:4,  name:"Ribbon Trend",   type:"Trend",    risk:"Medium",   tf:"Intraday",  alloc:5,  activeIn:["TRENDING_UP","TRENDING_DOWN"],                     desc:"Sustained EMA ribbon, pullback entries only." },
+      { id:7,  name:"Swing Trend",    type:"Swing",    risk:"Medium",   tf:"Multi-day", alloc:10, activeIn:["TRENDING_UP","TRENDING_DOWN"],                     desc:"Multi-session directional moves, wider stops." },
+      { id:10, name:"Intraday Trend", type:"Intraday", risk:"Low-Med",  tf:"Session",   alloc:8,  activeIn:["TRENDING_UP","TRENDING_DOWN","VOL_EXPANSION"],     desc:"Session-aware follower. Avoids news windows." },
+      { id:11, name:"Macro Swing",    type:"Macro",    risk:"Low",      tf:"Weekly",    alloc:8,  activeIn:["TRENDING_UP","TRENDING_DOWN"],                     desc:"Slow wide macro moves. Portfolio anchor." },
+    ],
+  },
+  { id:"beta", name:"TEAM BETA", division:"Reversion & Momentum", color:C.violet,
+    lead:  { name:"ORACLE", role:"Team Lead",      icon:"◎", skills:["RSI Extremes","BB Analysis","Funding Sentiment","Vol Surge","Momentum Score"] },
+    senior:{ name:"NEXUS",  role:"Senior Analyst", icon:"◉", skills:["Reversion vs Trend","Conflict Check","Conf Scoring","Drawdown Monitor"] },
+    agents:[
+      { id:1,  name:"RSI Zones",     type:"Reversion", risk:"Medium",   tf:"Intraday",  alloc:8, activeIn:["RANGING","FUNDING_EXTREME"],                        desc:"Fades RSI extremes near range boundaries." },
+      { id:5,  name:"BB Reversion",  type:"Reversion", risk:"Medium",   tf:"Intraday",  alloc:7, activeIn:["RANGING"],                                          desc:"Fades price near implied BB extremes." },
+      { id:8,  name:"RSI Reversal",  type:"Reversal",  risk:"High",     tf:"Multi-day", alloc:4, activeIn:["FUNDING_EXTREME"],                                  desc:"Catches major turns after capitulation/blow-off." },
+      { id:3,  name:"MACD Momentum", type:"Momentum",  risk:"Medium",   tf:"Intraday",  alloc:8, activeIn:["TRENDING_UP","TRENDING_DOWN","VOL_EXPANSION"],      desc:"Strong impulses confirmed by volume surge." },
+      { id:9,  name:"Scalper Micro", type:"Scalp",     risk:"Med-High", tf:"Micro",     alloc:6, activeIn:["RANGING","TRENDING_UP","TRENDING_DOWN"],            desc:"Micro-moves on liquid pairs, tight stops." },
+    ],
+  },
+  { id:"gamma", name:"TEAM GAMMA", division:"Special Operations", color:C.amber,
+    lead:  { name:"SPECTER", role:"Team Lead",      icon:"◆", skills:["Vol Compression","Liquidity Sweep","Funding Extremes","Breakout Confirm","OI Analysis"] },
+    senior:{ name:"CIPHER",  role:"Senior Analyst", icon:"◉", skills:["Sweep Recognition","Vol Regime","Funding Analysis","Cross-Agent Dedup"] },
+    agents:[
+      { id:6,  name:"Breakout",         type:"Breakout",   risk:"Medium",   tf:"Intraday",  alloc:8, activeIn:["VOL_EXPANSION","RANGING"],                      desc:"Range break with vol expansion confirmation." },
+      { id:12, name:"VOL-SNIPER",        type:"Volatility", risk:"Medium",   tf:"Intraday",  alloc:6, activeIn:["VOL_EXPANSION"],                               desc:"Vol compression→expansion. Needs OI confirm." },
+      { id:13, name:"LIQUIDITY-HUNTER",  type:"Liquidity",  risk:"Med-High", tf:"Intraday",  alloc:9, activeIn:["RANGING","TRENDING_UP","TRENDING_DOWN"],       desc:"Fades liquidity sweeps with reclaim confirmation." },
+      { id:14, name:"FUNDING-EDGE",      type:"Sentiment",  risk:"Low",      tf:"Multi-day", alloc:7, activeIn:["FUNDING_EXTREME"],                             desc:"Extreme funding rates as crowding reversal signals." },
+    ],
+  },
+];
+
+const AGENT_MAP = Object.fromEntries(
+  TEAMS.flatMap(t => t.agents.map(a => [a.id, { ...a, teamColor:t.color, teamName:t.name }]))
+);
+
+// ─────────────────────────────────────────────────────────────────
+// §3  MARKET API  — routes through /api/bybit proxy (fixes CORS)
+// ─────────────────────────────────────────────────────────────────
+async function proxyBybit(path, params = {}) {
+  const qs = new URLSearchParams({ path, ...params });
+  const res = await fetch(`/api/bybit?${qs.toString()}`);
+  const d   = await res.json();
+  if (d.retCode !== 0) throw new Error(d.retMsg ?? "Bybit error");
+  return d.result;
+}
+
+async function fetchTickers() {
+  const r = await proxyBybit("/v5/market/tickers", { category:"linear" });
+  return r.list.filter(t => t.symbol.endsWith("USDT") && parseFloat(t.volume24h) > 500_000);
+}
+
+async function bybitPrivate(apiKey, apiSecret, method, path, body = {}) {
+  try {
+    const ts    = Date.now().toString();
+    const recv  = "5000";
+    const enc   = new TextEncoder();
+    const paramStr = method === "GET"
+      ? ts + apiKey + recv + new URLSearchParams(body).toString()
+      : ts + apiKey + recv + JSON.stringify(body);
+
+    const key  = await crypto.subtle.importKey("raw", enc.encode(apiSecret), { name:"HMAC", hash:"SHA-256" }, false, ["sign"]);
+    const sigBuf = await crypto.subtle.sign("HMAC", key, enc.encode(paramStr));
+    const sig  = Array.from(new Uint8Array(sigBuf)).map(b => b.toString(16).padStart(2,"0")).join("");
+
+    const headers = {
+      "Content-Type":       "application/json",
+      "X-BAPI-API-KEY":     apiKey,
+      "X-BAPI-SIGN":        sig,
+      "X-BAPI-TIMESTAMP":   ts,
+      "X-BAPI-RECV-WINDOW": recv,
+    };
+
+    const url = method === "GET"
+      ? `/api/bybit?path=${encodeURIComponent(path)}&${new URLSearchParams(body)}`
+      : `/api/bybit?path=${encodeURIComponent(path)}`;
+
+    const res = await fetch(url, {
+      method,
+      headers,
+      body: method !== "GET" ? JSON.stringify(body) : undefined,
+    });
+    return await res.json();
+  } catch(e) { return { retCode:-1, retMsg:e.message }; }
+}
+
+async function getBalance(apiKey, apiSecret) {
+  const d = await bybitPrivate(apiKey, apiSecret, "GET", "/v5/account/wallet-balance", { accountType:"UNIFIED" });
+  if (d?.retCode !== 0) return null;
+  const coin = d.result?.list?.[0]?.coin?.find(c => c.coin === "USDT");
+  return parseFloat(coin?.availableToWithdraw ?? coin?.walletBalance ?? 0);
+}
+
+async function getOpenPositions(apiKey, apiSecret) {
+  const d = await bybitPrivate(apiKey, apiSecret, "GET", "/v5/position/list", { category:"linear", settleCoin:"USDT" });
+  if (d?.retCode !== 0) return [];
+  return (d.result?.list ?? []).filter(p => parseFloat(p.size) > 0);
+}
+
+async function placeOrder(apiKey, apiSecret, symbol, side, qty, leverage, sl, tp) {
+  await bybitPrivate(apiKey, apiSecret, "POST", "/v5/position/set-leverage", {
+    category:"linear", symbol, buyLeverage:String(leverage), sellLeverage:String(leverage),
+  });
+  return bybitPrivate(apiKey, apiSecret, "POST", "/v5/order/create", {
+    category:"linear", symbol, side, orderType:"Market", qty:String(qty),
+    stopLoss: String(sl.toFixed(4)), takeProfit: String(tp.toFixed(4)),
+    timeInForce:"GTC",
+  });
+}
+
+function detectRegime(tickers) {
+  if (!tickers?.length) return { key:"RANGING", confidence:50, stats:{} };
+  const pcts   = tickers.map(t => parseFloat(t.price24hPcnt) * 100);
+  const avg    = pcts.reduce((a,b) => a+b, 0) / pcts.length;
+  const bulls  = pcts.filter(c => c >  1.5).length;
+  const bears  = pcts.filter(c => c < -1.5).length;
+  const spikes = pcts.filter(c => Math.abs(c) > 5).length;
+  const btc    = tickers.find(t => t.symbol === "BTCUSDT");
+  const fund   = parseFloat(btc?.fundingRate ?? 0);
+  const total  = tickers.length;
+  const stats  = { avg:avg.toFixed(2), bulls, bears, spikes, total, funding:(fund*100).toFixed(4)+"%" };
+
+  let key = "RANGING", confidence = 58;
+  if      (Math.abs(fund) > 0.001)   { key="FUNDING_EXTREME"; confidence=90; }
+  else if (spikes >= 4)              { key="VOL_EXPANSION";   confidence=83; }
+  else if (bulls>=6 && avg>2)        { key="TRENDING_UP";     confidence=Math.min(78+bulls,96); }
+  else if (bears>=6 && avg<-2)       { key="TRENDING_DOWN";   confidence=Math.min(78+bears,96); }
+  else if (bulls>=4 && avg>0.8)      { key="TRENDING_UP";     confidence=65; }
+  else if (bears>=4 && avg<-0.8)     { key="TRENDING_DOWN";   confidence=65; }
+  return { key, confidence, stats };
+}
+
+// ─────────────────────────────────────────────────────────────────
+// §4  SIGNAL ENGINE
+// ─────────────────────────────────────────────────────────────────
+const SIGNAL_RULES = {
+  Trend:     (chg,pos,regime) => regime.includes("TRENDING") && Math.abs(chg)>1.5 && (regime==="TRENDING_UP"?pos>0.5:pos<0.5) ? [chg>0?"Buy":"Sell", 65+Math.min(Math.abs(chg)*3,25), "Trend + range align"] : null,
+  Intraday:  (chg,_,regime)   => regime.includes("TRENDING") && Math.abs(chg)>1.5 ? [chg>0?"Buy":"Sell", 62+Math.min(Math.abs(chg)*2,20), "Intraday directional"] : null,
+  Macro:     (chg,_,regime)   => regime.includes("TRENDING") && Math.abs(chg)>0.8 ? [chg>0?"Buy":"Sell", 60, "Macro trend bias"] : null,
+  Swing:     (chg,_,regime)   => regime.includes("TRENDING") && Math.abs(chg)>1.2 ? [chg>0?"Buy":"Sell", 66, "Swing direction"] : null,
+  Reversion: (_,pos)          => pos<0.15 ? ["Buy",68,"Lower BB extreme"] : pos>0.85 ? ["Sell",68,"Upper BB extreme"] : null,
+  Reversal:  (chg,pos)        => chg<-12&&pos<0.1 ? ["Buy",73,"Capitulation"] : chg>12&&pos>0.9 ? ["Sell",73,"Blow-off"] : null,
+  Momentum:  (chg,_,__,vol)   => vol>5e6&&Math.abs(chg)>3 ? [chg>0?"Buy":"Sell", 70+Math.min(Math.abs(chg)*2,20),"Momentum+vol"] : null,
+  Scalp:     (chg,pos)        => Math.abs(chg)>0.5&&Math.abs(chg)<3 ? [chg>0&&pos>0.45?"Buy":chg<0&&pos<0.55?"Sell":null,62,"Micro scalp"] : null,
+  Breakout:  (chg,pos)        => pos>0.92&&chg>4 ? ["Buy",75,"Range breakout"] : pos<0.08&&chg<-4 ? ["Sell",75,"Range breakdown"] : null,
+  Volatility:(chg,_,regime)   => regime==="VOL_EXPANSION" ? [chg>5?"Buy":chg<-5?"Sell":null,77,"Vol expansion"] : null,
+  Liquidity: (_,pos)          => pos<0.05 ? ["Buy",74,"Sweep low→reclaim"] : pos>0.95 ? ["Sell",74,"Sweep high→reject"] : null,
+  Sentiment: (_,__,___,____,fund) => fund<-0.001 ? ["Buy",79,"Extreme neg funding"] : fund>0.001 ? ["Sell",79,"Extreme pos funding"] : null,
+};
+
+function buildSignal(agent, ticker, regimeKey, leverage, size) {
+  if (!agent.activeIn.includes(regimeKey)) return null;
+  const vol   = parseFloat(ticker.volume24h);
+  if (vol < 1_000_000) return null;
+  const chg   = parseFloat(ticker.price24hPcnt)*100;
+  const price = parseFloat(ticker.lastPrice);
+  const high  = parseFloat(ticker.highPrice24h);
+  const low   = parseFloat(ticker.lowPrice24h);
+  const pos   = (price-low)/((high-low)||1);
+  const fund  = parseFloat(ticker.fundingRate??0);
+  const res   = SIGNAL_RULES[agent.type]?.(chg,pos,regimeKey,vol,fund);
+  if (!res || !res[0]) return null;
+  const [side,conf,reason] = res;
+  return {
+    id: `${agent.id}-${ticker.symbol}-${side}`,
+    agentId:agent.id, agentName:agent.name, agentType:agent.type,
+    symbol:ticker.symbol, side, price,
+    sl: side==="Buy" ? price*0.985 : price*1.015,
+    tp: side==="Buy" ? price*1.030 : price*0.970,
+    qty: parseFloat(((size*leverage)/price).toFixed(4)),
+    conf:Math.round(conf), reason, leverage, size, ts:Date.now(),
+  };
+}
+
+function generateSignals(tickers, regimeKey, leverage, size) {
+  const byKey = new Map();
+  TEAMS.forEach(team => team.agents.forEach(agent => {
+    [...tickers].sort((a,b)=>parseFloat(b.volume24h)-parseFloat(a.volume24h)).slice(0,30)
+      .forEach(ticker => {
+        const sig = buildSignal(agent, ticker, regimeKey, leverage, size);
+        if (!sig) return;
+        const key = `${sig.symbol}:${sig.side}`;
+        if (!byKey.has(key) || sig.conf > byKey.get(key).conf) byKey.set(key, sig);
+      });
+  }));
+  return [...byKey.values()].sort((a,b)=>b.conf-a.conf).slice(0,24);
+}
+
+// ─────────────────────────────────────────────────────────────────
+// §5  AI CASCADE
+// ─────────────────────────────────────────────────────────────────
+async function callClaude(apiKey, system, user) {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "x-api-key": apiKey, "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
+    body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:800, system, messages:[{role:"user",content:user}] }),
+  });
+  const d = await res.json();
+  if (d.error) throw new Error(d.error.message);
+  return d.content?.map(i=>i.text??"").join("") ?? "";
+}
+
+function buildMMPrompt(regimeKey, rd, tickers) {
+  const topPairs = tickers.slice(0,5).map(t=>`${t.symbol} ${(parseFloat(t.price24hPcnt)*100).toFixed(1)}%`).join(" | ");
+  return {
+    system:"You are MASTERMIND, Director of a professional crypto perpetual futures trading institution. Knowledge repository for all 14 agents. Military briefing style. Be specific and direct.",
+    user:`DIRECTOR CYCLE BRIEF\n\nREGIME: ${REGIMES[regimeKey]?.label} (${rd.confidence}% confidence)\nSCAN: ${rd.stats.total} pairs | Avg ${rd.stats.avg}% | ▲${rd.stats.bulls} ▼${rd.stats.bears} ⚡${rd.stats.spikes} | Funding ${rd.stats.funding}\nTOP: ${topPairs}\n\nTEAMS: ATLAS(Trend)→VEGA | ORACLE(Rev/Mom)→NEXUS | SPECTER(SpecOps)→CIPHER\n\nISSUE DIRECTIVE:\n1. REGIME VERDICT — data-backed reasoning\n2. CAPITAL ORDERS — deploy/standdown/reduce per division\n3. CONFLICT RESOLUTION — 2 cross-team risks resolved\n4. KNOWLEDGE PUSH — market edge per Team Lead\n5. IMPROVEMENT MANDATE — 3 agent parameter changes\n\nMax 240 words.`,
+  };
+}
+
+function buildLeadPrompt(team, regimeKey, rd, mmText) {
+  const agents = team.agents.map(a=>`${a.name}[${a.activeIn.includes(regimeKey)?"ACTIVE":"STBY"}]`).join(", ");
+  return {
+    system:`You are ${team.lead.name}, Team Lead of ${team.name}. Report UP to MASTERMIND, direct DOWN to Senior ${team.senior.name}.`,
+    user:`TEAM LEAD REPORT — ${team.name}\n\nREGIME: ${REGIMES[regimeKey]?.label} | AGENTS: ${agents}\n\nDIRECTOR DIRECTED:\n${(mmText??"").slice(0,380)}\n\nYOUR RESPONSE:\n1. ${team.senior.name} DIRECTIVE\n2. AGENT TABLE — status per agent\n3. ESCALATION — 1 problem to Mastermind\n4. IMPROVEMENTS — 2 parameter changes\n5. RISK FLAGS\n\nMax 180 words.`,
+  };
+}
+
+function buildSeniorPrompt(team, regimeKey, rd, leadText) {
+  const agents = team.agents.map(a=>`${a.name}[${a.id}](${a.activeIn.includes(regimeKey)?"ACTIVE":"STBY"},${a.risk})`).join(", ");
+  return {
+    system:`You are ${team.senior.name}, Senior Analyst of ${team.name}. Between Lead ${team.lead.name} and agents. Supervise, flag problems, confirm directives.`,
+    user:`SENIOR REPORT — ${team.name}\n\nREGIME: ${REGIMES[regimeKey]?.label}\nAGENTS: ${agents}\n\nLEAD ${team.lead.name} DIRECTED:\n${(leadText??"").slice(0,320)}\n\nYOUR REPORT:\n1. AGENT STATUS — one line each\n2. CONFLICTS detected\n3. PERFORMANCE FLAGS\n4. IMPLEMENTATION CONFIRM\n5. ESCALATION to ${team.lead.name}\n\nMax 170 words.`,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────
+// §6  HOOKS
+// ─────────────────────────────────────────────────────────────────
+function usePulseDot() {
+  const [lit,setLit] = useState(false);
+  useEffect(()=>{ const t=setInterval(()=>setLit(p=>!p),1500); return()=>clearInterval(t); },[]);
+  return lit;
+}
+
+function useTypewriter(text, speed=9) {
+  const [shown,setShown] = useState(""); const [idx,setIdx] = useState(0); const ref=useRef(null);
+  useEffect(()=>{ setShown(""); setIdx(0); },[text]);
+  useEffect(()=>{
+    if (!text || idx>=text.length) return;
+    const t=setTimeout(()=>{ setShown(p=>p+text[idx]); setIdx(i=>i+1); },speed);
+    return()=>clearTimeout(t);
+  },[idx,text,speed]);
+  useEffect(()=>{ if(ref.current) ref.current.scrollTop=ref.current.scrollHeight; },[shown]);
+  return { shown, cursor:idx<(text?.length??0), ref };
+}
+
+function useToast() {
+  const [toast,setToast] = useState(null);
+  const show = useCallback((msg,type="info")=>{ setToast({msg,type}); setTimeout(()=>setToast(null),4000); },[]);
+  return { toast, show };
+}
+
+// ─────────────────────────────────────────────────────────────────
+// §7  ATOMS
+// ─────────────────────────────────────────────────────────────────
+function Dot({ color=C.gold, size=8 }) {
+  const lit=usePulseDot();
+  return <span style={{ display:"inline-block",flexShrink:0,width:size,height:size,borderRadius:"50%",background:color,boxShadow:`0 0 ${lit?12:3}px ${color}`,transition:"box-shadow 1.5s ease" }} />;
+}
+function Bar({ pct, color=C.gold, h=3 }) {
+  return <div style={{ height:h,borderRadius:h,background:"rgba(255,255,255,0.05)",overflow:"hidden" }}><div style={{ height:"100%",width:`${Math.min(pct,100)}%`,background:color,borderRadius:h,transition:"width 1s linear" }} /></div>;
+}
+function Tag({ children, color=C.sub }) {
+  return <span style={{ fontSize:9,letterSpacing:.4,whiteSpace:"nowrap",color,background:`${color}18`,border:`1px solid ${color}30`,borderRadius:4,padding:"1px 7px" }}>{children}</span>;
+}
+function Pill({ children, color }) {
+  return <span style={{ fontSize:9,fontWeight:700,letterSpacing:1,color,background:`${color}18`,border:`1px solid ${color}40`,borderRadius:20,padding:"2px 10px" }}>{children}</span>;
+}
+function StatBox({ label, value, color=C.body }) {
+  return (
+    <div style={{ background:C.s2,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 14px" }}>
+      <div style={{ fontSize:8,color:C.sub,letterSpacing:2,marginBottom:4 }}>{label}</div>
+      <div style={{ fontSize:16,color,fontWeight:700 }}>{value}</div>
+    </div>
+  );
+}
+function Skeleton({ h=100 }) {
+  return <div style={{ height:h,borderRadius:8,background:C.s2,animation:"pulse 1.4s ease infinite" }} />;
+}
+function ToastBanner({ msg, type }) {
+  const col = type==="success"?C.green:type==="error"?C.red:C.gold;
+  return <div style={{ position:"fixed",top:20,right:20,zIndex:9999,padding:"11px 18px",borderRadius:10,maxWidth:380,background:`${col}0F`,border:`1px solid ${col}45`,color:col,fontSize:11,animation:"fadeUp .3s ease" }}>{msg}</div>;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// §8  MOLECULES
+// ─────────────────────────────────────────────────────────────────
+const TIER_LABEL = { 1:"TIER 1 · DIRECTOR", 2:"TIER 2 · TEAM LEAD", 3:"TIER 3 · SENIOR" };
+
+const BriefingCard = memo(({ tier, icon, name, role, color, text, loading }) => {
+  const { shown, cursor, ref } = useTypewriter(loading?"":text??"");
+  return (
+    <div style={{ background:C.s1,border:`1px solid ${color}20`,borderRadius:12,overflow:"hidden",display:"flex",flexDirection:"column" }}>
+      <div style={{ display:"flex",alignItems:"center",gap:10,padding:"10px 16px",background:`${color}07`,borderBottom:`1px solid ${color}14` }}>
+        <Dot color={color} size={7} />
+        <div style={{ flex:1 }}>
+          <div style={{ display:"flex",alignItems:"center",gap:8 }}>
+            <span style={{ fontSize:12,color,fontWeight:700,letterSpacing:1 }}>{icon} {name}</span>
+            <Tag color={color}>{TIER_LABEL[tier]}</Tag>
+          </div>
+          <div style={{ fontSize:9,color:C.sub,marginTop:2 }}>{role}</div>
+        </div>
+        {loading && <span style={{ fontSize:8,color:C.muted,animation:"blink .7s infinite",letterSpacing:2 }}>COMPUTING</span>}
+      </div>
+      <div ref={ref} style={{ padding:"12px 16px",maxHeight:190,minHeight:110,overflowY:"auto",fontSize:11,lineHeight:1.9,color:C.body,whiteSpace:"pre-wrap" }}>
+        {loading ? <Skeleton h={80} />
+          : shown ? <>{shown}{cursor&&<span style={{ color,animation:"blink .8s infinite" }}>▊</span>}</>
+          : <span style={{ color:C.muted }}>Awaiting cycle...</span>}
+      </div>
+    </div>
+  );
+});
+
+const AgentRow = memo(({ agent, regimeKey, teamColor, sigCount }) => {
+  const active = agent.activeIn.includes(regimeKey);
+  return (
+    <div style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,marginBottom:4,background:active?`${teamColor}0A`:C.s2,border:`1px solid ${active?teamColor+"28":C.border}`,transition:"all .2s" }}>
+      <div style={{ width:30,height:30,flexShrink:0,borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",background:active?`${teamColor}18`:C.s3,border:`1px solid ${active?teamColor+"35":C.border}`,fontSize:9,fontWeight:700,color:active?teamColor:C.muted }}>{String(agent.id).padStart(2,"0")}</div>
+      <div style={{ flex:1,minWidth:0 }}>
+        <div style={{ fontSize:11,color:active?C.bright:C.muted,fontWeight:600 }}>{agent.name}</div>
+        <div style={{ fontSize:8,color:C.sub,marginTop:1 }}>{agent.type} · {agent.tf} · {agent.alloc}%</div>
+      </div>
+      <div style={{ display:"flex",gap:5,alignItems:"center",flexShrink:0 }}>
+        {sigCount>0 && <Tag color={C.gold}>{sigCount} SIG</Tag>}
+        <Tag color={RISK_C[agent.risk]??C.gold}>{agent.risk}</Tag>
+        <Tag color={active?C.green:C.muted}>{active?"● ON":"○ OFF"}</Tag>
+      </div>
+    </div>
+  );
+});
+
+const SignalCard = memo(({ sig, onExec, mode }) => {
+  const sc = sig.side==="Buy"?C.green:C.red;
+  const meta = AGENT_MAP[sig.agentId];
+  return (
+    <div style={{ background:C.s1,border:`1px solid ${sc}18`,borderRadius:12,padding:"14px 16px" }}>
+      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10 }}>
+        <div>
+          <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:4 }}>
+            <span style={{ fontSize:14,fontWeight:700,color:C.bright }}>{sig.symbol}</span>
+            <Pill color={sc}>{sig.side.toUpperCase()}</Pill>
+            <Tag color={meta?.teamColor??C.sub}>AGT-{String(sig.agentId).padStart(2,"0")}</Tag>
+          </div>
+          <div style={{ fontSize:9,color:C.sub }}>{sig.agentName} · {sig.reason}</div>
+        </div>
+        <div style={{ textAlign:"right" }}>
+          <div style={{ fontSize:15,color:C.gold,fontWeight:700 }}>{sig.conf}%</div>
+          <div style={{ fontSize:8,color:C.sub }}>CONF</div>
+        </div>
+      </div>
+      <div style={{ display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:12 }}>
+        {[["ENTRY",`$${sig.price.toLocaleString(undefined,{maximumFractionDigits:4})}`,C.body],["STOP",`$${sig.sl.toFixed(4)}`,C.red],["TARGET",`$${sig.tp.toFixed(4)}`,C.green],["LEV",`${sig.leverage}×`,C.gold]].map(([l,v,col])=>(
+          <div key={l} style={{ background:C.s2,borderRadius:7,padding:"7px 10px" }}>
+            <div style={{ fontSize:7,color:C.sub,letterSpacing:1,marginBottom:3 }}>{l}</div>
+            <div style={{ fontSize:10,color:col,fontWeight:700 }}>{v}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center" }}>
+        <span style={{ fontSize:8,color:C.muted }}>SIZE ${sig.size} · QTY {sig.qty} {sig.symbol.replace("USDT","")}</span>
+        <button onClick={()=>onExec(sig)} style={{ background:`${sc}18`,border:`1px solid ${sc}40`,color:sc,borderRadius:8,padding:"6px 14px",fontSize:9,fontWeight:700 }}>
+          {mode==="live"?"EXECUTE LIVE":"PAPER TRADE"} →
+        </button>
+      </div>
+    </div>
+  );
+});
+
+function Slider({ label, value, set, min, max, step, color, fmt, warnAbove }) {
+  const pct = ((value-min)/(max-min))*100;
+  return (
+    <div style={{ background:C.s2,border:`1px solid ${C.border}`,borderRadius:12,padding:"16px 18px",marginBottom:12 }}>
+      <div style={{ display:"flex",justifyContent:"space-between",marginBottom:10 }}>
+        <span style={{ fontSize:9,color:C.sub,letterSpacing:2 }}>{label}</span>
+        <span style={{ fontSize:16,color,fontWeight:700 }}>{fmt(value)}</span>
+      </div>
+      <input type="range" min={min} max={max} step={step} value={value} onChange={e=>set(+e.target.value)}
+        style={{ width:"100%",accentColor:color,background:`linear-gradient(90deg,${color} ${pct}%,rgba(255,255,255,0.08) ${pct}%)` }} />
+      <div style={{ display:"flex",justifyContent:"space-between",marginTop:5 }}>
+        <span style={{ fontSize:8,color:C.muted }}>{fmt(min)}</span>
+        <span style={{ fontSize:8,color:C.muted }}>{fmt(max)}</span>
+      </div>
+      {warnAbove!=null && value>warnAbove && (
+        <div style={{ marginTop:8,padding:"7px 10px",fontSize:9,color:C.red,lineHeight:1.6,background:`${C.red}08`,border:`1px solid ${C.red}20`,borderRadius:7 }}>
+          ⚠ {value}× leverage — elevated liquidation risk. Confirm stop-losses active.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────
+// §9  API KEYS PANEL  (new)
+// ─────────────────────────────────────────────────────────────────
+function ApiPanel({ keys, setKeys, balance, positions, onTest, testStatus }) {
+  const [show, setShow] = useState({ bybit:false, claude:false });
+  const [local, setLocal] = useState({ bybitKey:"", bybitSecret:"", claudeKey:"" });
+
+  function save() {
+    // Persist in sessionStorage only (never leaves browser)
+    sessionStorage.setItem("mm_keys", JSON.stringify(local));
+    setKeys(local);
+    onTest(local);
+  }
+  function clear() {
+    sessionStorage.removeItem("mm_keys");
+    setKeys({ bybitKey:"", bybitSecret:"", claudeKey:"" });
+    setLocal({ bybitKey:"", bybitSecret:"", claudeKey:"" });
+  }
+  useEffect(()=>{
+    const saved = sessionStorage.getItem("mm_keys");
+    if (saved) { const k=JSON.parse(saved); setLocal(k); setKeys(k); }
+  },[]);
+
+  const connected = keys.bybitKey && keys.claudeKey;
+
+  return (
+    <div className="fade-up" style={{ maxWidth:560 }}>
+      {/* Status banner */}
+      <div style={{ display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderRadius:12,marginBottom:20,background:connected?`${C.green}08`:`${C.amber}08`,border:`1px solid ${connected?C.green:C.amber}30` }}>
+        <Dot color={connected?C.green:C.amber} size={10} />
+        <div>
+          <div style={{ fontSize:12,fontWeight:700,color:connected?C.green:C.amber }}>{connected?"API CONNECTED":"API NOT CONFIGURED"}</div>
+          <div style={{ fontSize:9,color:C.sub,marginTop:2 }}>{connected?"Live data and trading active":"Enter keys below to enable live regime detection and trading"}</div>
+        </div>
+        {connected && balance!=null && (
+          <div style={{ marginLeft:"auto",textAlign:"right" }}>
+            <div style={{ fontSize:9,color:C.sub }}>USDT BALANCE</div>
+            <div style={{ fontSize:16,color:C.green,fontWeight:700 }}>${balance.toLocaleString(undefined,{maximumFractionDigits:2})}</div>
+          </div>
+        )}
+      </div>
+
+      {/* Security notice */}
+      <div style={{ padding:"12px 16px",borderRadius:10,marginBottom:20,background:`${C.blue}06`,border:`1px solid ${C.blue}20`,fontSize:10,color:C.sub,lineHeight:1.8 }}>
+        🔒 <strong style={{ color:C.blue }}>Security:</strong> Keys stored in <strong>session memory only</strong> — cleared on browser close.
+        They are sent <strong>only to Bybit and Anthropic</strong> servers, never logged or stored anywhere else.<br/>
+        For Bybit: enable <strong>Trade permission only</strong>. Do NOT enable withdrawal.
+      </div>
+
+      {/* Bybit keys */}
+      <div style={{ background:C.s1,border:`1px solid ${C.border}`,borderRadius:12,padding:"18px",marginBottom:12 }}>
+        <div style={{ fontSize:10,color:C.blue,fontWeight:700,letterSpacing:2,marginBottom:14 }}>BYBIT API — LIVE MARKET DATA + TRADING</div>
+        {[["API KEY","bybitKey","text"],["API SECRET","bybitSecret","password"]].map(([label,field,type])=>(
+          <div key={field} style={{ marginBottom:12 }}>
+            <div style={{ fontSize:9,color:C.sub,letterSpacing:2,marginBottom:6 }}>{label}</div>
+            <div style={{ position:"relative" }}>
+              <input type={show[field]?"text":type} value={local[field]} onChange={e=>setLocal(p=>({...p,[field]:e.target.value}))}
+                placeholder={`Enter Bybit ${label.toLowerCase()}...`} />
+              {type==="password" && (
+                <button onClick={()=>setShow(p=>({...p,[field]:!p[field]}))}
+                  style={{ position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:C.sub,fontSize:10 }}>
+                  {show[field]?"HIDE":"SHOW"}
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Claude key */}
+      <div style={{ background:C.s1,border:`1px solid ${C.border}`,borderRadius:12,padding:"18px",marginBottom:16 }}>
+        <div style={{ fontSize:10,color:C.gold,fontWeight:700,letterSpacing:2,marginBottom:14 }}>ANTHROPIC API — AI INTELLIGENCE CASCADE</div>
+        <div style={{ fontSize:9,color:C.sub,letterSpacing:2,marginBottom:6 }}>CLAUDE API KEY</div>
+        <div style={{ position:"relative" }}>
+          <input type={show.claudeKey?"text":"password"} value={local.claudeKey} onChange={e=>setLocal(p=>({...p,claudeKey:e.target.value}))}
+            placeholder="sk-ant-..." />
+          <button onClick={()=>setShow(p=>({...p,claudeKey:!p.claudeKey}))}
+            style={{ position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:C.sub,fontSize:10 }}>
+            {show.claudeKey?"HIDE":"SHOW"}
+          </button>
+        </div>
+        <div style={{ fontSize:9,color:C.sub,marginTop:8,lineHeight:1.6 }}>
+          Get your key at <span style={{ color:C.gold }}>console.anthropic.com</span>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20 }}>
+        <button onClick={save} style={{ padding:"12px",background:`${C.green}12`,border:`1px solid ${C.green}40`,color:C.green,borderRadius:10,fontSize:11,fontWeight:700,letterSpacing:1 }}>
+          ✓ SAVE & CONNECT
+        </button>
+        <button onClick={clear} style={{ padding:"12px",background:`${C.red}08`,border:`1px solid ${C.red}30`,color:C.red,borderRadius:10,fontSize:11,fontWeight:700,letterSpacing:1 }}>
+          ✕ CLEAR KEYS
+        </button>
+      </div>
+
+      {/* Test status */}
+      {testStatus && (
+        <div style={{ padding:"10px 14px",borderRadius:8,background:testStatus.ok?`${C.green}08`:`${C.red}08`,border:`1px solid ${testStatus.ok?C.green:C.red}30`,fontSize:10,color:testStatus.ok?C.green:C.red,lineHeight:1.7 }}>
+          {testStatus.msg}
+        </div>
+      )}
+
+      {/* Open positions */}
+      {positions.length > 0 && (
+        <div style={{ marginTop:20 }}>
+          <div style={{ fontSize:9,color:C.sub,letterSpacing:2,marginBottom:10 }}>OPEN BYBIT POSITIONS ({positions.length})</div>
+          {positions.map((p,i)=>(
+            <div key={i} style={{ background:C.s1,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 14px",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center" }}>
+              <div>
+                <span style={{ fontSize:12,color:C.bright,fontWeight:700,marginRight:8 }}>{p.symbol}</span>
+                <Tag color={p.side==="Buy"?C.green:C.red}>{p.side}</Tag>
+              </div>
+              <div style={{ display:"flex",gap:16,alignItems:"center" }}>
+                <div><div style={{ fontSize:7,color:C.muted }}>SIZE</div><div style={{ fontSize:11,color:C.body,fontWeight:700 }}>{p.size}</div></div>
+                <div><div style={{ fontSize:7,color:C.muted }}>ENTRY</div><div style={{ fontSize:11,color:C.body,fontWeight:700 }}>${parseFloat(p.avgPrice).toFixed(4)}</div></div>
+                <div><div style={{ fontSize:7,color:C.muted }}>P&L</div><div style={{ fontSize:12,color:parseFloat(p.unrealisedPnl)>=0?C.green:C.red,fontWeight:700 }}>{parseFloat(p.unrealisedPnl)>=0?"+":""}{parseFloat(p.unrealisedPnl).toFixed(2)}</div></div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────
+// §9b  OTHER VIEWS
+// ─────────────────────────────────────────────────────────────────
+const OrgView = memo(({ regimeKey }) => {
+  const [expanded,setExpanded] = useState(null);
+  return (
+    <div className="fade-up">
+      <div style={{ display:"flex",justifyContent:"center",marginBottom:6 }}>
+        <div style={{ maxWidth:660,width:"100%",background:C.s1,border:`1px solid ${C.gold}30`,borderRadius:16,padding:"20px 24px",boxShadow:`0 0 48px ${C.gold}08` }}>
+          <div style={{ display:"flex",alignItems:"flex-start",gap:16 }}>
+            <div style={{ width:56,height:56,flexShrink:0,borderRadius:14,background:`${C.gold}12`,border:`2px solid ${C.gold}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,color:C.gold }}>◈</div>
+            <div style={{ flex:1 }}>
+              <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:5 }}>
+                <span style={{ fontSize:20,fontWeight:900,color:C.gold,fontFamily:"'Unbounded',sans-serif",letterSpacing:3 }}>MASTERMIND</span>
+                <Tag color={C.gold}>TIER 1 · DIRECTOR</Tag>
+              </div>
+              <div style={{ fontSize:10,color:C.sub,marginBottom:12 }}>{DIRECTOR.role}</div>
+              <div style={{ display:"flex",flexWrap:"wrap",gap:5,marginBottom:12 }}>
+                {DIRECTOR.skills.map(s=><Tag key={s} color={C.gold}>{s}</Tag>)}
+              </div>
+              <div style={{ fontSize:10,color:C.body,lineHeight:1.85,padding:"10px 14px",background:`${C.gold}05`,borderLeft:`2px solid ${C.gold}30`,borderRadius:"0 8px 8px 0" }}>{DIRECTOR.description}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style={{ display:"flex",justifyContent:"center",marginBottom:6 }}>
+        <div style={{ width:2,height:32,background:`linear-gradient(180deg,${C.gold}50,${C.border})` }} />
+      </div>
+      <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(310px,1fr))",gap:16 }}>
+        {TEAMS.map(team=>{
+          const open=expanded===team.id;
+          const ac=team.agents.filter(a=>a.activeIn.includes(regimeKey)).length;
+          return (
+            <div key={team.id} style={{ display:"flex",flexDirection:"column",gap:8 }}>
+              <div style={{ background:C.s1,border:`1px solid ${team.color}25`,borderRadius:14,padding:16 }}>
+                <div style={{ display:"flex",alignItems:"center",gap:12,marginBottom:12 }}>
+                  <div style={{ width:44,height:44,flexShrink:0,borderRadius:12,background:`${team.color}14`,border:`1px solid ${team.color}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18 }}>{team.lead.icon}</div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:3 }}>
+                      <span style={{ fontSize:14,fontWeight:800,color:team.color,fontFamily:"'Unbounded',sans-serif",letterSpacing:2 }}>{team.lead.name}</span>
+                      <Tag color={team.color}>TIER 2 · LEAD</Tag>
+                    </div>
+                    <div style={{ fontSize:9,color:C.sub }}>{team.name} · {team.division}</div>
+                  </div>
+                  <div style={{ textAlign:"right" }}>
+                    <div style={{ fontSize:14,color:ac>0?C.green:C.muted,fontWeight:700 }}>{ac}/{team.agents.length}</div>
+                    <div style={{ fontSize:8,color:C.sub }}>ACTIVE</div>
+                  </div>
+                </div>
+                <div style={{ display:"flex",flexWrap:"wrap",gap:4,marginBottom:12 }}>{team.lead.skills.map(s=><Tag key={s} color={team.color}>{s}</Tag>)}</div>
+                <div style={{ background:C.s2,border:`1px solid ${team.color}14`,borderRadius:10,padding:"12px 14px" }}>
+                  <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:8 }}>
+                    <div style={{ width:32,height:32,flexShrink:0,borderRadius:8,background:`${team.color}10`,border:`1px solid ${team.color}28`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14 }}>{team.senior.icon}</div>
+                    <div>
+                      <div style={{ display:"flex",alignItems:"center",gap:7 }}>
+                        <span style={{ fontSize:12,fontWeight:700,color:team.color,opacity:.85 }}>{team.senior.name}</span>
+                        <Tag color={team.color}>TIER 3 · SENIOR</Tag>
+                      </div>
+                      <div style={{ fontSize:8,color:C.sub,marginTop:1 }}>{team.senior.role}</div>
+                    </div>
+                  </div>
+                  <div style={{ display:"flex",flexWrap:"wrap",gap:4 }}>{team.senior.skills.map(s=><Tag key={s} color={C.sub}>{s}</Tag>)}</div>
+                </div>
+              </div>
+              <button onClick={()=>setExpanded(open?null:team.id)} style={{ display:"flex",justifyContent:"space-between",alignItems:"center",background:C.s2,border:`1px solid ${open?team.color+"45":C.border}`,borderRadius:9,padding:"9px 14px",color:open?team.color:C.sub,fontSize:9,fontWeight:700,letterSpacing:2 }}>
+                <span>{open?"▲ HIDE":"▼ EXPAND"} TIER 4 — {team.agents.length} AGENTS</span>
+                <Tag color={team.color}>{ac} ACTIVE</Tag>
+              </button>
+              {open && (
+                <div className="slide-r" style={{ background:C.s1,border:`1px solid ${team.color}14`,borderRadius:12,padding:14 }}>
+                  <div style={{ fontSize:8,color:C.muted,letterSpacing:2,marginBottom:10 }}>TIER 4 — SUPERVISED BY {team.senior.name}</div>
+                  {team.agents.map(agent=>{
+                    const active=agent.activeIn.includes(regimeKey);
+                    return (
+                      <div key={agent.id} style={{ background:active?`${team.color}08`:C.s2,border:`1px solid ${active?team.color+"25":C.border}`,borderRadius:9,padding:"10px 12px",marginBottom:6 }}>
+                        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5 }}>
+                          <div style={{ display:"flex",alignItems:"center",gap:8 }}>
+                            <Tag color={team.color}>AGT-{String(agent.id).padStart(2,"0")}</Tag>
+                            <span style={{ fontSize:11,color:active?C.bright:C.muted,fontWeight:600 }}>{agent.name}</span>
+                            <Tag color={C.sub}>{agent.type}</Tag>
+                          </div>
+                          <Tag color={active?C.green:C.muted}>{active?"● ACTIVE":"○ STBY"}</Tag>
+                        </div>
+                        <div style={{ fontSize:9,color:C.sub,lineHeight:1.7 }}>{agent.desc}</div>
+                        <div style={{ display:"flex",gap:6,marginTop:6 }}>
+                          <Tag color={C.muted}>TF: {agent.tf}</Tag>
+                          <Tag color={C.muted}>ALLOC: {agent.alloc}%</Tag>
+                          <Tag color={RISK_C[agent.risk]??C.gold}>{agent.risk}</Tag>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
+
+const CommandView = memo(({ rd, stats, briefings, loading, lastSync, countdown }) => (
+  <div className="fade-up" style={{ display:"flex",flexDirection:"column",gap:14 }}>
+    {rd.stats.avg != null && (
+      <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(115px,1fr))",gap:8 }}>
+        {stats.map(([l,v,col])=><StatBox key={l} label={l} value={v} color={col} />)}
+      </div>
+    )}
+    <BriefingCard tier={1} icon="◈" name="MASTERMIND" role={DIRECTOR.role} color={C.gold} text={briefings.mm} loading={!!loading.mm} />
+    <div style={{ fontSize:8,color:C.sub,letterSpacing:3 }}>TIER 2 — TEAM LEAD RESPONSES</div>
+    <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:12 }}>
+      {TEAMS.map(team=><BriefingCard key={team.id} tier={2} icon={team.lead.icon} name={team.lead.name} role={`${team.name} · ${team.division}`} color={team.color} text={briefings.leads[team.id]} loading={!!loading[`lead_${team.id}`]} />)}
+    </div>
+    <div style={{ fontSize:8,color:C.sub,letterSpacing:3 }}>TIER 3 — SENIOR ANALYST REPORTS</div>
+    <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:12 }}>
+      {TEAMS.map(team=><BriefingCard key={team.id} tier={3} icon={team.senior.icon} name={team.senior.name} role={team.senior.role} color={team.color} text={briefings.seniors[team.id]} loading={!!loading[`senior_${team.id}`]} />)}
+    </div>
+    {lastSync && <div style={{ textAlign:"center",fontSize:8,color:C.muted,letterSpacing:2 }}>LAST SYNC {lastSync.toLocaleTimeString()} · {rd.stats.total??0} PAIRS · NEXT IN {countdown}s</div>}
+  </div>
+));
+
+const SignalsView = memo(({ signals, onExec, mode, total }) => (
+  <div className="fade-up">
+    <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10 }}>
+      <div>
+        <div style={{ fontSize:13,color:C.bright,fontWeight:700 }}>LIVE SIGNALS — ALL 14 AGENTS</div>
+        <div style={{ fontSize:8,color:C.sub,marginTop:3 }}>Refreshed every 30s · {total??0} USDT pairs · Highest confidence first</div>
+      </div>
+      <div style={{ display:"flex",gap:6 }}>
+        <Pill color={C.green}>{signals.filter(s=>s.side==="Buy").length} LONG</Pill>
+        <Pill color={C.red}>{signals.filter(s=>s.side==="Sell").length} SHORT</Pill>
+        <Pill color={mode==="live"?C.red:C.gold}>{mode==="live"?"🔴 LIVE":"📄 PAPER"}</Pill>
+      </div>
+    </div>
+    {signals.length===0
+      ? <div style={{ textAlign:"center",padding:60,color:C.muted,fontSize:12 }}>No signals in current regime. Waiting for next scan...</div>
+      : <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(360px,1fr))",gap:10 }}>
+          {signals.map(s=><SignalCard key={s.id} sig={s} onExec={onExec} mode={mode} />)}
+        </div>}
+  </div>
+));
+
+const TradesView = memo(({ trades, paperPnl, dailyLoss, maxLoss, maxTrades, openCount, mode }) => (
+  <div className="fade-up">
+    <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:8,marginBottom:18 }}>
+      <StatBox label="Open Trades" value={`${openCount}/${maxTrades}`} color={C.blue} />
+      <StatBox label="Closed" value={trades.filter(t=>t.status==="closed").length} color={C.sub} />
+      <StatBox label="Paper P&L" value={(paperPnl>=0?"+":"")+paperPnl.toFixed(2)+" USDT"} color={paperPnl>=0?C.green:C.red} />
+      <StatBox label="Daily Loss" value={`$${dailyLoss.toFixed(2)} / $${maxLoss}`} color={dailyLoss>maxLoss*.7?C.red:C.gold} />
+      <StatBox label="Mode" value={mode.toUpperCase()} color={mode==="live"?C.red:C.gold} />
+    </div>
+    {trades.length===0
+      ? <div style={{ textAlign:"center",padding:60,color:C.muted,fontSize:12 }}>No trades yet. Execute signals from the SIGNALS tab.</div>
+      : trades.map((t,i)=>(
+        <div key={i} style={{ display:"flex",flexWrap:"wrap",gap:16,alignItems:"center",background:t.status==="open"?`${C.blue}06`:C.s1,border:`1px solid ${t.status==="open"?C.blue+"22":C.border}`,borderRadius:10,padding:"12px 16px",marginBottom:8 }}>
+          <div style={{ flex:1,minWidth:180 }}>
+            <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:4 }}>
+              <span style={{ fontSize:13,color:t.status==="open"?C.bright:C.sub,fontWeight:700 }}>{t.symbol}</span>
+              <Pill color={t.side==="Buy"?C.green:C.red}>{t.side}</Pill>
+              <Tag color={t.mode==="live"?C.red:C.gold}>{t.mode.toUpperCase()}</Tag>
+            </div>
+            <div style={{ fontSize:9,color:C.muted }}>AGT-{String(t.agentId).padStart(2,"0")} · {t.agentName} · ${t.price.toFixed(4)} · Qty {t.qty} · {t.leverage}×</div>
+          </div>
+          <div style={{ display:"flex",gap:18,alignItems:"center",flexWrap:"wrap" }}>
+            {[["S/L",`$${t.sl.toFixed(4)}`,C.red],["T/P",`$${t.tp.toFixed(4)}`,C.green]].map(([l,v,col])=>(
+              <div key={l}><div style={{ fontSize:7,color:C.muted }}>{l}</div><div style={{ fontSize:11,color:col,fontWeight:700 }}>{v}</div></div>
+            ))}
+            {t.pnl!=null && <div><div style={{ fontSize:7,color:C.muted }}>P&L</div><div style={{ fontSize:14,color:t.pnl>=0?C.green:C.red,fontWeight:700 }}>{t.pnl>=0?"+":""}{t.pnl.toFixed(2)}</div></div>}
+            <Tag color={t.status==="open"?C.blue:C.sub}>{t.status==="open"?"OPEN":"CLOSED"}</Tag>
+          </div>
+        </div>
+      ))
+    }
+  </div>
+));
+
+const MarketView = memo(({ tickers }) => {
+  const sorted = useMemo(()=>[...tickers].sort((a,b)=>parseFloat(b.volume24h)-parseFloat(a.volume24h)),[tickers]);
+  return (
+    <div className="fade-up">
+      <div style={{ fontSize:8,color:C.sub,letterSpacing:2,marginBottom:14 }}>ALL USDT PERPETUAL PAIRS — BYBIT LIVE ({tickers.length} pairs)</div>
+      <div style={{ display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 1fr",padding:"4px 12px",marginBottom:6 }}>
+        {["PAIR","PRICE","24H %","VOLUME","FUNDING"].map(h=><span key={h} style={{ fontSize:8,color:C.muted,letterSpacing:2,textAlign:h==="PAIR"?"left":"right" }}>{h}</span>)}
+      </div>
+      <div style={{ maxHeight:600,overflowY:"auto" }}>
+        {sorted.map(t=>{
+          const chg=parseFloat(t.price24hPcnt)*100, price=parseFloat(t.lastPrice), vol=parseFloat(t.volume24h)/1e6, fund=parseFloat(t.fundingRate??0)*100;
+          return (
+            <div key={t.symbol} style={{ display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 1fr",padding:"6px 12px",borderRadius:7,background:C.s1,marginBottom:2 }}>
+              <span style={{ fontSize:11,color:C.body }}>{t.symbol.replace("USDT","")}</span>
+              <span style={{ fontSize:11,color:C.bright,textAlign:"right" }}>${price.toLocaleString(undefined,{maximumFractionDigits:4})}</span>
+              <span style={{ fontSize:11,color:chg>=0?C.green:C.red,textAlign:"right",fontWeight:700 }}>{chg>=0?"+":""}{chg.toFixed(2)}%</span>
+              <span style={{ fontSize:10,color:C.sub,textAlign:"right" }}>${vol.toFixed(0)}M</span>
+              <span style={{ fontSize:10,color:Math.abs(fund)>.05?C.violet:C.muted,textAlign:"right" }}>{fund.toFixed(4)}%</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
+
+const ConfigView = memo(({ leverage,setLeverage,size,setSize,maxLoss,setMaxLoss,maxTrades,setMaxTrades,mode,setMode }) => (
+  <div className="fade-up" style={{ maxWidth:520 }}>
+    <div style={{ background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:18,marginBottom:16 }}>
+      <div style={{ fontSize:9,color:C.sub,letterSpacing:2,marginBottom:14 }}>TRADING MODE</div>
+      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10 }}>
+        {[["paper","📄 PAPER","Simulation · No real orders",C.gold],["live","🔴 LIVE","Real orders on Bybit",C.red]].map(([m,label,sub,col])=>(
+          <button key={m} onClick={()=>setMode(m)} style={{ padding:"14px 10px",borderRadius:11,textAlign:"center",border:`2px solid ${mode===m?col:C.border}`,background:mode===m?`${col}10`:"transparent",color:mode===m?col:C.sub,transition:"all .2s" }}>
+            <div style={{ fontSize:13,fontWeight:700,marginBottom:5 }}>{label}</div>
+            <div style={{ fontSize:8,opacity:.6 }}>{sub}</div>
+          </button>
+        ))}
+      </div>
+      {mode==="live" && <div style={{ marginTop:12,padding:"9px 12px",fontSize:10,color:C.red,lineHeight:1.7,background:`${C.red}07`,border:`1px solid ${C.red}20`,borderRadius:8 }}>⚠ LIVE MODE ACTIVE — Real funds at risk. Agents will place real orders.</div>}
+    </div>
+    <Slider label="TRADE SIZE (USDT)" value={size}      set={setSize}      min={5}   max={500}  step={5}  color={C.gold}                                                   fmt={v=>`$${v}`} />
+    <Slider label="LEVERAGE"          value={leverage}  set={setLeverage}  min={1}   max={100}  step={1}  color={leverage>25?C.red:leverage>10?C.amber:C.green}              fmt={v=>`${v}×`} warnAbove={25} />
+    <Slider label="MAX DAILY LOSS"    value={maxLoss}   set={setMaxLoss}   min={10}  max={2000} step={10} color={C.red}                                                      fmt={v=>`$${v}`} />
+    <Slider label="MAX OPEN TRADES"   value={maxTrades} set={setMaxTrades} min={1}   max={14}   step={1}  color={C.blue}                                                     fmt={v=>`${v}`} />
+  </div>
+));
+
+// ─────────────────────────────────────────────────────────────────
+// §10  ROOT APP
+// ─────────────────────────────────────────────────────────────────
+function App() {
+  // API keys
+  const [keys,     setKeys]     = useState({ bybitKey:"", bybitSecret:"", claudeKey:"" });
+  const [balance,  setBalance]  = useState(null);
+  const [positions,setPositions]= useState([]);
+  const [testStatus,setTestStatus] = useState(null);
+
+  // Market
+  const [tickers,   setTickers]   = useState([]);
+  const [rd,        setRd]        = useState({ key:"RANGING", confidence:50, stats:{} });
+  const [signals,   setSignals]   = useState([]);
+  const [status,    setStatus]    = useState("INIT");
+  const [lastSync,  setLastSync]  = useState(null);
+  const [countdown, setCountdown] = useState(30);
+
+  // Briefings
+  const [briefings, setBriefings] = useState({ mm:"", leads:{}, seniors:{} });
+  const [loading,   setLoading]   = useState({});
+  const setLoad = useCallback((k,v)=>setLoading(p=>({...p,[k]:v})),[]);
+
+  // Config
+  const [leverage,  setLeverage]  = useState(5);
+  const [size,      setSize]      = useState(20);
+  const [maxLoss,   setMaxLoss]   = useState(100);
+  const [maxTrades, setMaxTrades] = useState(6);
+  const [mode,      setMode]      = useState("paper");
+
+  // Trades
+  const [trades,    setTrades]    = useState([]);
+  const [paperPnl,  setPaperPnl]  = useState(0);
+  const [dailyLoss, setDailyLoss] = useState(0);
+
+  // UI
+  const [tab, setTab] = useState("api");
+  const { toast, show: showToast } = useToast();
+
+  const R         = REGIMES[rd.key] ?? REGIMES.RANGING;
+  const openCount = useMemo(()=>trades.filter(t=>t.status==="open").length,[trades]);
+
+  const statStrip = useMemo(()=>[
+    ["AVG CHANGE",  (rd.stats.avg??0)+"%",                   parseFloat(rd.stats.avg??0)>=0?C.green:C.red],
+    ["BULL PAIRS",  `${rd.stats.bulls??0}/${rd.stats.total??0}`, C.green],
+    ["BEAR PAIRS",  `${rd.stats.bears??0}/${rd.stats.total??0}`, C.red],
+    ["VOL SPIKES",  rd.stats.spikes??0,                      C.amber],
+    ["BTC FUNDING", rd.stats.funding??"—",                   C.violet],
+    ["SIGNALS",     signals.length,                          C.gold],
+    ["OPEN TRADES", `${openCount}/${maxTrades}`,             C.blue],
+    ["PAPER P&L",   (paperPnl>=0?"+":"")+paperPnl.toFixed(2), paperPnl>=0?C.green:C.red],
+  ],[rd.stats,signals.length,openCount,maxTrades,paperPnl]);
+
+  // Test API connection
+  const testConnection = useCallback(async(k)=>{
+    if (!k.bybitKey || !k.claudeKey) return;
+    setTestStatus({ ok:null, msg:"Testing connection..." });
+    try {
+      const bal = await getBalance(k.bybitKey, k.bybitSecret);
+      if (bal !== null) {
+        setBalance(bal);
+        const pos = await getOpenPositions(k.bybitKey, k.bybitSecret);
+        setPositions(pos);
+        setTestStatus({ ok:true, msg:`✅ Bybit connected — Balance: $${bal.toFixed(2)} USDT · ${pos.length} open positions` });
+      } else {
+        setTestStatus({ ok:false, msg:"❌ Bybit connection failed. Check your API key and permissions." });
+      }
+    } catch(e) {
+      setTestStatus({ ok:false, msg:`❌ Error: ${e.message}` });
+    }
+  },[]);
+
+  // Market fetch
+  const fetchMarket = useCallback(async()=>{
+    setStatus("SCANNING...");
+    try {
+      const t   = await fetchTickers();
+      const rdv = detectRegime(t);
+      setTickers(t); setRd(rdv); setLastSync(new Date()); setStatus("LIVE");
+      const sigs = generateSignals(t, rdv.key, leverage, size);
+      setSignals(sigs);
+      return { tickers:t, rd:rdv };
+    } catch(e) { setStatus("ERROR"); return null; }
+  },[leverage,size]);
+
+  // 4-tier AI cascade
+  const runCascade = useCallback(async(market)=>{
+    if (!market || !keys.claudeKey) return;
+    const { tickers:t, rd:r } = market;
+
+    setLoad("mm",true);
+    const mmP = buildMMPrompt(r.key,r,t);
+    let mmText="";
+    try { mmText=await callClaude(keys.claudeKey,mmP.system,mmP.user); setBriefings(p=>({...p,mm:mmText})); }
+    catch { mmText="Director signal lost."; setBriefings(p=>({...p,mm:mmText})); }
+    setLoad("mm",false);
+
+    await Promise.all(TEAMS.map(async team=>{
+      const tid=team.id;
+      setLoad(`lead_${tid}`,true);
+      const lP=buildLeadPrompt(team,r.key,r,mmText);
+      let lText="";
+      try { lText=await callClaude(keys.claudeKey,lP.system,lP.user); setBriefings(p=>({...p,leads:{...p.leads,[tid]:lText}})); }
+      catch { lText=`${team.lead.name} offline.`; setBriefings(p=>({...p,leads:{...p.leads,[tid]:lText}})); }
+      setLoad(`lead_${tid}`,false);
+
+      setLoad(`senior_${tid}`,true);
+      const sP=buildSeniorPrompt(team,r.key,r,lText);
+      try { const b=await callClaude(keys.claudeKey,sP.system,sP.user); setBriefings(p=>({...p,seniors:{...p.seniors,[tid]:b}})); }
+      catch { setBriefings(p=>({...p,seniors:{...p.seniors,[tid]:`${team.senior.name} offline.`}})); }
+      setLoad(`senior_${tid}`,false);
+    }));
+  },[keys.claudeKey,setLoad]);
+
+  // 30-second cycle
+  const runCycle = useCallback(async()=>{
+    const market = await fetchMarket();
+    await runCascade(market);
+    setCountdown(30);
+  },[fetchMarket,runCascade]);
+
+  useEffect(()=>{
+    runCycle();
+    const cd=setInterval(()=>setCountdown(c=>{ if(c<=1){ runCycle(); return 30; } return c-1; }),1000);
+    return()=>clearInterval(cd);
+  },[runCycle]);
+
+  // Execute trade
+  const execute = useCallback(async(sig)=>{
+    if (dailyLoss>=maxLoss)   { showToast("⛔ Daily loss limit hit.","error"); return; }
+    if (openCount>=maxTrades) { showToast(`⛔ Max ${maxTrades} open trades.`,"error"); return; }
+
+    if (mode==="live" && keys.bybitKey) {
+      showToast(`⏳ Placing LIVE order: ${sig.side} ${sig.symbol}...`,"info");
+      const res = await placeOrder(keys.bybitKey, keys.bybitSecret, sig.symbol, sig.side, sig.qty, sig.leverage, sig.sl, sig.tp);
+      if (res?.retCode===0) {
+        const trade={...sig,orderId:res.result?.orderId,status:"open",mode:"live",openTime:Date.now()};
+        setTrades(p=>[trade,...p]);
+        showToast(`✅ LIVE: ${sig.side} ${sig.qty} ${sig.symbol} @ $${sig.price.toFixed(2)}`,"success");
+      } else {
+        showToast(`❌ Order failed: ${res?.retMsg??"Unknown error"}`,"error");
+      }
+    } else {
+      const trade={...sig,orderId:"T"+Date.now(),status:"open",mode:"paper",openTime:Date.now()};
+      setTrades(p=>[trade,...p]);
+      showToast(`📄 PAPER: ${sig.side} ${sig.qty} ${sig.symbol} @ $${sig.price.toFixed(2)}`,"success");
+      setTimeout(()=>{
+        const pnl=sig.size*sig.leverage*((Math.random()-.42)*.04);
+        setPaperPnl(p=>p+pnl);
+        if(pnl<0) setDailyLoss(p=>p+Math.abs(pnl));
+        setTrades(p=>p.map(t=>t.orderId===trade.orderId?{...t,status:"closed",pnl}:t));
+      },30_000);
+    }
+  },[dailyLoss,maxLoss,openCount,maxTrades,mode,keys,showToast]);
+
+  const TABS = useMemo(()=>[
+    ["api",     "🔑 API KEYS"],
+    ["org",     "🏛 HIERARCHY"],
+    ["command", "⚡ COMMAND"],
+    ["signals", `🎯 SIGNALS (${signals.length})`],
+    ["trades",  `📋 TRADES (${openCount})`],
+    ["market",  "📊 MARKET"],
+    ["config",  "⚙ CONFIG"],
+  ],[signals.length,openCount]);
+
+  const apiConnected = keys.bybitKey && keys.claudeKey;
+
+  return (
+    <div style={{ minHeight:"100vh",background:C.s0,color:C.body }}>
+      {/* Background */}
+      <div aria-hidden style={{ position:"fixed",inset:0,pointerEvents:"none",zIndex:0 }}>
+        <div style={{ position:"absolute",inset:0,backgroundImage:`linear-gradient(${C.border} 1px,transparent 1px),linear-gradient(90deg,${C.border} 1px,transparent 1px)`,backgroundSize:"64px 64px",opacity:.6 }} />
+        {[[C.gold,"6%","10%",500,.025],[C.blue,"88%","55%",400,.03],[C.violet,"46%","90%",350,.025],[R.color,"94%","6%",260,.04]].map(([col,x,y,s,op],i)=>(
+          <div key={i} style={{ position:"absolute",left:x,top:y,width:s,height:s,borderRadius:"50%",background:col,filter:`blur(${s*.55}px)`,opacity:op,transform:"translate(-50%,-50%)" }} />
+        ))}
+      </div>
+
+      {toast && <ToastBanner {...toast} />}
+
+      {/* HEADER */}
+      <header style={{ position:"sticky",top:0,zIndex:200,background:"rgba(6,8,15,0.97)",backdropFilter:"blur(24px)",borderBottom:`1px solid ${C.border}` }}>
+        <div style={{ maxWidth:1400,margin:"0 auto",padding:"14px 24px" }}>
+          <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12,marginBottom:12 }}>
+            <div style={{ display:"flex",alignItems:"center",gap:12 }}>
+              <div style={{ width:38,height:38,borderRadius:10,flexShrink:0,background:`${C.gold}12`,border:`1px solid ${C.gold}35`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,color:C.gold }}>◈</div>
+              <div>
+                <div style={{ fontSize:20,fontWeight:900,color:C.gold,fontFamily:"'Unbounded',sans-serif",letterSpacing:5,lineHeight:1 }}>MASTERMIND</div>
+                <div style={{ fontSize:8,color:C.muted,letterSpacing:3,marginTop:3 }}>INSTITUTIONAL SYSTEM · 4 TIERS · 14 AGENTS · BYBIT PERPS</div>
+              </div>
+            </div>
+            <div style={{ display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" }}>
+              {/* API status dot */}
+              <div style={{ display:"flex",alignItems:"center",gap:6,padding:"6px 12px",background:apiConnected?`${C.green}08`:`${C.amber}08`,border:`1px solid ${apiConnected?C.green:C.amber}30`,borderRadius:8 }}>
+                <Dot color={apiConnected?C.green:C.amber} size={6} />
+                <span style={{ fontSize:9,color:apiConnected?C.green:C.amber,fontWeight:700 }}>{apiConnected?"API LIVE":"NO API"}</span>
+              </div>
+              <div style={{ padding:"6px 11px",background:`${R.color}08`,border:`1px solid ${R.color}28`,borderRadius:8,textAlign:"center" }}>
+                <div style={{ fontSize:8,color:C.sub,letterSpacing:1 }}>REGIME</div>
+                <div style={{ fontSize:11,color:R.color,fontWeight:700 }}>{R.icon} {R.label}</div>
+              </div>
+              {[
+                [C.green, "P&L",  (paperPnl>=0?"+":"")+paperPnl.toFixed(2)],
+                [C.blue,  "OPEN", `${openCount}/${maxTrades}`],
+                [status==="LIVE"?C.green:C.red, "●", status],
+                [C.gold,  "NEXT", countdown+"s"],
+              ].map(([col,l,v])=>(
+                <div key={l} style={{ padding:"6px 11px",textAlign:"center",minWidth:52,background:C.s1,border:`1px solid ${C.border}`,borderRadius:8 }}>
+                  <div style={{ fontSize:7,color:C.sub,letterSpacing:2 }}>{l}</div>
+                  <div style={{ fontSize:12,color:col,fontWeight:700 }}>{v}</div>
+                </div>
+              ))}
+              {balance!=null && (
+                <div style={{ padding:"6px 12px",background:`${C.green}06`,border:`1px solid ${C.green}20`,borderRadius:8 }}>
+                  <div style={{ fontSize:7,color:C.sub }}>BALANCE</div>
+                  <div style={{ fontSize:12,color:C.green,fontWeight:700 }}>${balance.toLocaleString(undefined,{maximumFractionDigits:2})}</div>
+                </div>
+              )}
+            </div>
+          </div>
+          <Bar pct={(countdown/30)*100} color={R.color} h={2} />
+        </div>
+        <div style={{ maxWidth:1400,margin:"0 auto",padding:"0 24px",display:"flex",gap:0,borderTop:`1px solid ${C.border}`,overflowX:"auto" }}>
+          {TABS.map(([id,label])=>(
+            <button key={id} onClick={()=>setTab(id)} style={{ background:"none",border:"none",borderBottom:tab===id?`2px solid ${C.gold}`:"2px solid transparent",color:tab===id?C.gold:C.sub,padding:"10px 18px",fontSize:9,fontWeight:700,letterSpacing:1,whiteSpace:"nowrap",transition:"color .2s,border-color .2s" }}>
+              {id==="api" && !apiConnected ? <span style={{ color:C.amber }}>⚠ {label}</span> : label}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      <main style={{ maxWidth:1400,margin:"0 auto",padding:"24px",position:"relative",zIndex:1 }}>
+        {tab==="api"     && <ApiPanel keys={keys} setKeys={setKeys} balance={balance} positions={positions} onTest={testConnection} testStatus={testStatus} />}
+        {tab==="org"     && <OrgView regimeKey={rd.key} />}
+        {tab==="command" && <CommandView rd={rd} stats={statStrip} briefings={briefings} loading={loading} lastSync={lastSync} countdown={countdown} />}
+        {tab==="signals" && <SignalsView signals={signals} onExec={execute} mode={mode} total={rd.stats.total} />}
+        {tab==="trades"  && <TradesView trades={trades} paperPnl={paperPnl} dailyLoss={dailyLoss} maxLoss={maxLoss} maxTrades={maxTrades} openCount={openCount} mode={mode} />}
+        {tab==="market"  && <MarketView tickers={tickers} />}
+        {tab==="config"  && <ConfigView leverage={leverage} setLeverage={setLeverage} size={size} setSize={setSize} maxLoss={maxLoss} setMaxLoss={setMaxLoss} maxTrades={maxTrades} setMaxTrades={setMaxTrades} mode={mode} setMode={setMode} />}
+      </main>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
