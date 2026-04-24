@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>THE VOID MARKET — Mastermind</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&display=swap');
+
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;overflow:hidden;background:#000}
+
+  canvas{display:block;position:fixed;top:0;left:0}
+
+  /* Custom cursor */
+  *{cursor:none}
+  #cursor{
+    position:fixed;top:0;left:0;width:12px;height:12px;
+    border-radius:50%;background:#C6F135;
+    pointer-events:none;z-index:9999;
+    transition:transform .15s ease, background .2s;
+    mix-blend-mode:exclusion;
+  }
+  #cursor-ring{
+    position:fixed;top:0;left:0;width:36px;height:36px;
+    border-radius:50%;border:1px solid rgba(198,241,53,.5);
+    pointer-events:none;z-index:9998;
+    transition:transform .08s ease, width .2s, height .2s, border-color .2s;
+    mix-blend-mode:exclusion;
+  }
+  #cursor.hover{transform:translate(-50%,-50%) scale(2.5);background:#fff}
+  #cursor-ring.hover{width:60px;height:60px;border-color:rgba(198,241,53,.8)}
+
+  /* HUD overlay */
+  #hud{
+    position:fixed;top:0;left:0;right:0;bottom:0;
+    pointer-events:none;z-index:100;
+  }
+
+  /* Top bar */
+  #top-bar{
+    position:absolute;top:28px;left:40px;right:40px;
+    display:flex;justify-content:space-between;align-items:center;
+  }
+  #logo{
+    font-family:'Bebas Neue',sans-serif;
+    font-size:28px;letter-spacing:6px;
+    color:#C6F135;text-shadow:0 0 30px rgba(198,241,53,.6);
+  }
+  #logo span{color:rgba(255,255,255,.3)}
+  #status-bar{
+    display:flex;gap:24px;align-items:center;
+    font-family:'Space Mono',monospace;font-size:11px;
+    color:rgba(255,255,255,.4);letter-spacing:2px;
+  }
+  .status-dot{
+    width:6px;height:6px;border-radius:50%;
+    background:#C6F135;display:inline-block;margin-right:6px;
+    animation:dotPulse 2s ease-in-out infinite;
+  }
+
+  /* Crosshair */
+  #crosshair{
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    width:20px;height:20px;pointer-events:none;opacity:.3;
+  }
+  #crosshair::before,#crosshair::after{
+    content:'';position:absolute;background:rgba(198,241,53,.6);
+  }
+  #crosshair::before{left:50%;top:0;width:1px;height:100%;transform:translateX(-50%)}
+  #crosshair::after{top:50%;left:0;height:1px;width:100%;transform:translateY(-50%)}
+
+  /* Agent info panel */
+  #info-panel{
+    position:absolute;right:40px;top:50%;transform:translateY(-50%);
+    width:260px;
+    background:rgba(5,5,5,.85);
+    border:1px solid rgba(198,241,53,.2);
+    backdrop-filter:blur(20px);
+    padding:20px;
+    font-family:'Space Mono',monospace;
+    transition:opacity .4s, transform .4s;
+    opacity:0;pointer-events:none;
+  }
+  #info-panel.visible{opacity:1}
+  #info-name{
+    font-family:'Bebas Neue',sans-serif;
+    font-size:22px;letter-spacing:3px;color:#C6F135;
+    margin-bottom:4px;
+  }
+  #info-role{font-size:9px;color:rgba(198,241,53,.5);letter-spacing:3px;margin-bottom:16px}
+  #info-stats{display:flex;flex-direction:column;gap:8px}
+  .info-stat{display:flex;justify-content:space-between;align-items:center}
+  .info-stat-label{font-size:9px;color:rgba(255,255,255,.35);letter-spacing:2px;text-transform:uppercase}
+  .info-stat-value{font-size:12px;color:#fff;font-weight:700}
+  #info-bar-wrap{margin-top:14px;height:2px;background:rgba(255,255,255,.06)}
+  #info-bar{height:2px;background:linear-gradient(90deg,#C6F135,#22C55E);transition:width .6s ease}
+  #info-close{
+    position:absolute;top:12px;right:14px;font-size:11px;
+    color:rgba(255,255,255,.3);cursor:pointer;pointer-events:all;
+    font-family:'Space Mono',monospace;
+  }
+  #info-close:hover{color:#C6F135}
+
+  /* Bottom bar */
+  #bottom-bar{
+    position:absolute;bottom:28px;left:40px;right:40px;
+    display:flex;justify-content:space-between;align-items:flex-end;
+  }
+  #regime-badge{
+    font-family:'Bebas Neue',sans-serif;font-size:13px;
+    letter-spacing:4px;padding:8px 16px;
+    border:1px solid rgba(198,241,53,.25);
+    color:rgba(198,241,53,.7);
+    background:rgba(198,241,53,.04);
+  }
+  #controls-hint{
+    font-family:'Space Mono',monospace;font-size:9px;
+    color:rgba(255,255,255,.2);letter-spacing:2px;
+    text-align:right;line-height:2;
+  }
+  #agent-count{
+    font-family:'Bebas Neue',sans-serif;font-size:13px;
+    letter-spacing:4px;color:rgba(255,255,255,.25);
+    text-align:center;
+  }
+
+  /* Intro overlay */
+  #intro{
+    position:fixed;inset:0;background:#000;z-index:200;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    font-family:'Bebas Neue',sans-serif;
+    transition:opacity 1.2s ease;
+  }
+  #intro.fade{opacity:0;pointer-events:none}
+  #intro-title{
+    font-size:clamp(48px,8vw,96px);letter-spacing:12px;color:#fff;
+    animation:introReveal 1.2s ease forwards;
+    opacity:0;transform:translateY(30px);
+  }
+  #intro-sub{
+    font-size:clamp(12px,1.5vw,16px);letter-spacing:8px;color:rgba(198,241,53,.6);
+    margin-top:8px;
+    animation:introReveal 1.2s .3s ease forwards;
+    opacity:0;transform:translateY(20px);
+  }
+  #intro-enter{
+    margin-top:48px;padding:12px 40px;
+    border:1px solid rgba(198,241,53,.4);
+    color:rgba(198,241,53,.8);font-size:13px;letter-spacing:6px;
+    background:transparent;cursor:pointer;pointer-events:all;
+    font-family:'Bebas Neue',sans-serif;
+    animation:introReveal 1.2s .6s ease forwards;
+    opacity:0;
+    transition:all .2s;
+  }
+  #intro-enter:hover{background:rgba(198,241,53,.08);border-color:#C6F135;color:#C6F135}
+
+  /* Loading bar */
+  #loader{width:200px;height:1px;background:rgba(255,255,255,.1);margin-top:24px;overflow:hidden}
+  #loader-fill{height:100%;background:#C6F135;animation:load 1.5s ease forwards}
+
+  @keyframes introReveal{to{opacity:1;transform:translateY(0)}}
+  @keyframes dotPulse{0%,100%{opacity:.4;transform:scale(1)} 50%{opacity:1;transform:scale(1.4)}}
+  @keyframes load{from{width:0}to{width:100%}}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  @keyframes scanline{0%{transform:translateY(-100%)} 100%{transform:translateY(100vh)}}
+
+  /* Scanline */
+  #scanline{
+    position:fixed;top:0;left:0;right:0;height:2px;
+    background:linear-gradient(transparent,rgba(198,241,53,.06),transparent);
+    animation:scanline 6s linear infinite;pointer-events:none;z-index:150;
+  }
+</style>
+</head>
+<body>
+
+<div id="cursor"></div>
+<div id="cursor-ring"></div>
+<div id="scanline"></div>
+
+<!-- Intro screen -->
+<div id="intro">
+  <div id="intro-title">THE VOID MARKET</div>
+  <div id="intro-sub">MASTERMIND INSTITUTIONAL INTELLIGENCE</div>
+  <div id="loader"><div id="loader-fill"></div></div>
+  <button id="intro-enter" onclick="enterScene()">ENTER THE VOID</button>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+  <div id="top-bar">
+    <div id="logo">MASTERMIND <span>// VOID.v2</span></div>
+    <div id="status-bar">
+      <span><span class="status-dot"></span>14 AGENTS ACTIVE</span>
+      <span id="regime-live">RANGING ◆</span>
+      <span id="fps-counter">60 FPS</span>
+    </div>
+  </div>
+
+  <div id="crosshair"></div>
+
+  <!-- Agent info panel -->
+  <div id="info-panel">
+    <div id="info-close" onclick="closePanel()">✕ CLOSE</div>
+    <div id="info-name">ATLAS</div>
+    <div id="info-role">TIER 2 · TEAM LEAD · TREND DIVISION</div>
+    <div id="info-stats">
+      <div class="info-stat">
+        <span class="info-stat-label">Type</span>
+        <span class="info-stat-value" id="info-type">—</span>
+      </div>
+      <div class="info-stat">
+        <span class="info-stat-label">Risk</span>
+        <span class="info-stat-value" id="info-risk">—</span>
+      </div>
+      <div class="info-stat">
+        <span class="info-stat-label">Status</span>
+        <span class="info-stat-value" id="info-status" style="color:#C6F135">ACTIVE</span>
+      </div>
+      <div class="info-stat">
+        <span class="info-stat-label">Allocation</span>
+        <span class="info-stat-value" id="info-alloc">—</span>
+      </div>
+    </div>
+    <div id="info-bar-wrap"><div id="info-bar" style="width:70%"></div></div>
+    <div style="margin-top:12px;font-size:9px;color:rgba(255,255,255,.25);line-height:1.8;letter-spacing:1px" id="info-desc">—</div>
+  </div>
+
+  <div id="bottom-bar">
+    <div id="regime-badge">REGIME: RANGING ◆</div>
+    <div id="agent-count">3 TEAMS · 14 AGENTS · 1 DIRECTOR</div>
+    <div id="controls-hint">
+      DRAG — ROTATE<br/>
+      SCROLL — ZOOM<br/>
+      CLICK AGENT — INSPECT
+    </div>
+  </div>
+</div>
+
+<!-- Three.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+// ── AGENT DATA ─────────────────────────────────────────────────────
+const AGENTS = [
+  // Team Alpha (blue) - trend
+  {id:2,  name:"EMA CROSS",        team:"alpha", color:0x38BDF8, type:"Trend",     risk:"Medium",  alloc:6,  desc:"EMA crossover with vol confirmation. Active in trending regimes.",    geometry:"octahedron"},
+  {id:4,  name:"RIBBON TREND",     team:"alpha", color:0x38BDF8, type:"Trend",     risk:"Medium",  alloc:5,  desc:"Sustained EMA ribbon structure. Pullback entries only.",              geometry:"tetrahedron"},
+  {id:7,  name:"SWING TREND",      team:"alpha", color:0x38BDF8, type:"Swing",     risk:"Medium",  alloc:10, desc:"Multi-session directional moves with wider stops.",                   geometry:"dodecahedron"},
+  {id:10, name:"INTRADAY TREND",   team:"alpha", color:0x7DD3FC, type:"Intraday",  risk:"Low-Med", alloc:8,  desc:"Session-aware follower. Avoids high-noise news windows.",             geometry:"octahedron"},
+  {id:11, name:"MACRO SWING",      team:"alpha", color:0x0EA5E9, type:"Macro",     risk:"Low",     alloc:8,  desc:"Slow macro moves. Acts as portfolio anchor.",                        geometry:"icosahedron"},
+  // Team Beta (violet) - reversion
+  {id:1,  name:"RSI ZONES",        team:"beta",  color:0xA78BFA, type:"Reversion", risk:"Medium",  alloc:8,  desc:"Fades RSI extremes near range boundaries with trend filter.",        geometry:"octahedron"},
+  {id:5,  name:"BB REVERSION",     team:"beta",  color:0xA78BFA, type:"Reversion", risk:"Medium",  alloc:7,  desc:"Fades price near implied Bollinger Band extremes.",                  geometry:"tetrahedron"},
+  {id:8,  name:"RSI REVERSAL",     team:"beta",  color:0xC084FC, type:"Reversal",  risk:"High",    alloc:4,  desc:"Catches major turns after capitulation or blow-off moves.",          geometry:"dodecahedron"},
+  {id:3,  name:"MACD MOMENTUM",    team:"beta",  color:0x7C3AED, type:"Momentum",  risk:"Medium",  alloc:8,  desc:"Strong directional impulses confirmed by volume surge.",             geometry:"octahedron"},
+  {id:9,  name:"SCALPER MICRO",    team:"beta",  color:0xDDD6FE, type:"Scalp",     risk:"Med-High",alloc:6,  desc:"Micro-moves on liquid pairs with tight stops.",                      geometry:"tetrahedron"},
+  // Team Gamma (amber) - special ops
+  {id:6,  name:"BREAKOUT",         team:"gamma", color:0xFB923C, type:"Breakout",  risk:"Medium",  alloc:8,  desc:"Range break with vol expansion confirmation.",                       geometry:"octahedron"},
+  {id:12, name:"VOL-SNIPER",       team:"gamma", color:0xF97316, type:"Volatility",risk:"Medium",  alloc:6,  desc:"Vol compression → expansion. Requires OI confirmation.",            geometry:"icosahedron"},
+  {id:13, name:"LIQ-HUNTER",       team:"gamma", color:0xFED7AA, type:"Liquidity", risk:"Med-High",alloc:9,  desc:"Fades liquidity sweeps with 15-min reclaim confirmation.",           geometry:"dodecahedron"},
+  {id:14, name:"FUNDING-EDGE",     team:"gamma", color:0xEA580C, type:"Sentiment", risk:"Low",     alloc:7,  desc:"Extreme funding rates as crowding reversal signals.",                geometry:"tetrahedron"},
+];
+
+const TEAM_COLORS = { alpha:0x38BDF8, beta:0xA78BFA, gamma:0xFB923C };
+const REGIME_LABELS = ["RANGING ◆","TRENDING UP ▲","TRENDING DOWN ▼","VOL EXPANSION ⚡","FUNDING EXTREME ◎"];
+
+// ── SCENE SETUP ────────────────────────────────────────────────────
+const W = window.innerWidth, H = window.innerHeight;
+const scene    = new THREE.Scene();
+const camera   = new THREE.PerspectiveCamera(60, W/H, 0.1, 2000);
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false });
+renderer.setSize(W, H);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(0x030508, 1);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+document.body.appendChild(renderer.domElement);
+
+camera.position.set(0, 0, 80);
+
+// ── LIGHTING ───────────────────────────────────────────────────────
+const ambientLight = new THREE.AmbientLight(0x0a0a14, 2);
+scene.add(ambientLight);
+
+const limeLight = new THREE.PointLight(0xC6F135, 3, 200);
+limeLight.position.set(0, 0, 0);
+scene.add(limeLight);
+
+const blueLight  = new THREE.PointLight(0x38BDF8, 2, 150);
+blueLight.position.set(80, 40, -40);
+scene.add(blueLight);
+
+const violetLight = new THREE.PointLight(0xA78BFA, 2, 150);
+violetLight.position.set(-80, -40, -40);
+scene.add(violetLight);
+
+const amberLight = new THREE.PointLight(0xFB923C, 1.5, 150);
+amberLight.position.set(0, -80, 40);
+scene.add(amberLight);
+
+// ── MASTERMIND CORE ────────────────────────────────────────────────
+function createMastermind() {
+  const group = new THREE.Group();
+
+  // Outer shell — large wireframe icosahedron
+  const outerGeo  = new THREE.IcosahedronGeometry(14, 1);
+  const outerMat  = new THREE.MeshBasicMaterial({
+    color:0xC6F135, wireframe:true, transparent:true, opacity:.15
+  });
+  const outerMesh = new THREE.Mesh(outerGeo, outerMat);
+  group.add(outerMesh);
+
+  // Mid shell
+  const midGeo  = new THREE.IcosahedronGeometry(10, 0);
+  const midMat  = new THREE.MeshBasicMaterial({
+    color:0xC6F135, wireframe:true, transparent:true, opacity:.25
+  });
+  const midMesh = new THREE.Mesh(midGeo, midMat);
+  group.add(midMesh);
+
+  // Inner solid core
+  const innerGeo = new THREE.IcosahedronGeometry(6, 0);
+  const innerMat = new THREE.MeshStandardMaterial({
+    color:0x0A1200,
+    emissive:0xC6F135,
+    emissiveIntensity:.4,
+    metalness:.9,
+    roughness:.1,
+  });
+  const innerMesh = new THREE.Mesh(innerGeo, innerMat);
+  group.add(innerMesh);
+
+  // Pulsing glow sphere
+  const glowGeo  = new THREE.SphereGeometry(16, 32, 32);
+  const glowMat  = new THREE.MeshBasicMaterial({
+    color:0xC6F135, transparent:true, opacity:.03, side:THREE.BackSide
+  });
+  const glowMesh = new THREE.Mesh(glowGeo, glowMat);
+  group.add(glowMesh);
+
+  // Orbital rings
+  for (let i = 0; i < 3; i++) {
+    const ringGeo = new THREE.TorusGeometry(18 + i*4, .06, 8, 120);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color:0xC6F135, transparent:true, opacity:.12 - i*.03
+    });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = (Math.PI/3)*i;
+    ring.rotation.y = (Math.PI/4)*i;
+    group.add(ring);
+  }
+
+  group.userData = {
+    outerMesh, midMesh, innerMesh, glowMesh,
+    isMastermind:true,
+    name:"MASTERMIND",
+    role:"TIER 1 · DIRECTOR",
+    type:"Knowledge Repository",
+    risk:"—",
+    alloc:100,
+    desc:"The supreme intelligence core. Holds complete institutional knowledge of all 14 agents. Issues directives down the chain.",
+  };
+
+  return group;
+}
+
+const mastermind = createMastermind();
+scene.add(mastermind);
+
+// ── AGENT MESHES ───────────────────────────────────────────────────
+const agentMeshes = [];
+const raycaster   = new THREE.Raycaster();
+const mouse       = new THREE.Vector2(-9999, -9999);
+
+function makeGeometry(type, size) {
+  switch(type) {
+    case "octahedron":   return new THREE.OctahedronGeometry(size, 0);
+    case "tetrahedron":  return new THREE.TetrahedronGeometry(size, 0);
+    case "dodecahedron": return new THREE.DodecahedronGeometry(size, 0);
+    case "icosahedron":  return new THREE.IcosahedronGeometry(size, 0);
+    default:             return new THREE.OctahedronGeometry(size, 0);
+  }
+}
+
+// Arrange agents in 3 orbital rings (one per team)
+const TEAM_RADII   = { alpha:36, beta:50, gamma:44 };
+const TEAM_HEIGHT  = { alpha:0, beta:8, gamma:-8 };
+const TEAM_AGENTS  = { alpha:[], beta:[], gamma:[] };
+AGENTS.forEach(a => TEAM_AGENTS[a.team].push(a));
+
+AGENTS.forEach((agent, idx) => {
+  const team      = agent.team;
+  const teamList  = TEAM_AGENTS[team];
+  const agentIdx  = teamList.indexOf(agent);
+  const total     = teamList.length;
+  const angle     = (agentIdx / total) * Math.PI * 2;
+  const radius    = TEAM_RADII[team];
+  const height    = TEAM_HEIGHT[team];
+  const size      = 1.2 + (agent.alloc / 10) * .6;
+
+  const geo = makeGeometry(agent.geometry, size);
+
+  // Solid mesh
+  const mat = new THREE.MeshStandardMaterial({
+    color: agent.color,
+    emissive: agent.color,
+    emissiveIntensity: .3,
+    metalness:.7,
+    roughness:.2,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+
+  // Wireframe overlay
+  const wireMat  = new THREE.MeshBasicMaterial({
+    color:agent.color, wireframe:true, transparent:true, opacity:.4
+  });
+  const wireMesh = new THREE.Mesh(geo.clone(), wireMat);
+  mesh.add(wireMesh);
+
+  // Glow aura
+  const glowGeo  = new THREE.SphereGeometry(size * 2.5, 16, 16);
+  const glowMat  = new THREE.MeshBasicMaterial({
+    color:agent.color, transparent:true, opacity:.04, side:THREE.BackSide
+  });
+  const glowMesh = new THREE.Mesh(glowGeo, glowMat);
+  mesh.add(glowMesh);
+
+  // Position
+  mesh.position.set(
+    Math.cos(angle) * radius,
+    height + (Math.random() - .5) * 12,
+    Math.sin(angle) * radius
+  );
+
+  // Store orbit params
+  mesh.userData = {
+    ...agent,
+    orbitRadius : radius,
+    orbitAngle  : angle,
+    orbitHeight : mesh.position.y,
+    orbitSpeed  : .0003 + Math.random() * .0002,
+    rotSpeed    : { x: (.5-Math.random())*.012, y: (.5-Math.random())*.015, z: (.5-Math.random())*.01 },
+    baseEmissive: .3,
+    wireMesh, glowMesh,
+    isAgent: true,
+  };
+
+  scene.add(mesh);
+  agentMeshes.push(mesh);
+});
+
+// ── CONNECTION LINES ───────────────────────────────────────────────
+function createConnectionLines() {
+  const lines = [];
+  AGENTS.forEach(agent => {
+    const mesh = agentMeshes.find(m => m.userData.id === agent.id);
+    if (!mesh) return;
+
+    const points = [ new THREE.Vector3(0,0,0), mesh.position.clone() ];
+    const geo    = new THREE.BufferGeometry().setFromPoints(points);
+    const mat    = new THREE.LineBasicMaterial({
+      color: agent.color,
+      transparent:true,
+      opacity: .06,
+    });
+    const line = new THREE.Line(geo, mat);
+    line.userData = { agentMesh: mesh };
+    scene.add(line);
+    lines.push(line);
+  });
+  return lines;
+}
+
+const connectionLines = createConnectionLines();
+
+// ── STAR FIELD ─────────────────────────────────────────────────────
+function createStarField() {
+  const positions = new Float32Array(3000 * 3);
+  const colors    = new Float32Array(3000 * 3);
+  for (let i = 0; i < 3000; i++) {
+    const r  = 300 + Math.random() * 700;
+    const θ  = Math.random() * Math.PI * 2;
+    const φ  = Math.acos(2 * Math.random() - 1);
+    positions[i*3]   = r * Math.sin(φ) * Math.cos(θ);
+    positions[i*3+1] = r * Math.sin(φ) * Math.sin(θ);
+    positions[i*3+2] = r * Math.cos(φ);
+    const t = Math.random();
+    colors[i*3]   = .6 + t*.4;
+    colors[i*3+1] = .6 + t*.4;
+    colors[i*3+2] = .8 + t*.2;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const mat = new THREE.PointsMaterial({
+    size:.4, vertexColors:true, transparent:true, opacity:.6, sizeAttenuation:true
+  });
+  return new THREE.Points(geo, mat);
+}
+scene.add(createStarField());
+
+// ── FLOATING PARTICLES ─────────────────────────────────────────────
+function createParticles() {
+  const count = 400;
+  const pos   = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    pos[i*3]   = (Math.random()-.5)*160;
+    pos[i*3+1] = (Math.random()-.5)*160;
+    pos[i*3+2] = (Math.random()-.5)*160;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mat = new THREE.PointsMaterial({
+    color:0xC6F135, size:.25, transparent:true, opacity:.35, sizeAttenuation:true
+  });
+  return new THREE.Points(geo, mat);
+}
+const particles = createParticles();
+scene.add(particles);
+
+// ── GRID PLANE ─────────────────────────────────────────────────────
+function createGrid() {
+  const geo  = new THREE.PlaneGeometry(300, 300, 40, 40);
+  const mat  = new THREE.MeshBasicMaterial({
+    color:0x0D1A0D, wireframe:true, transparent:true, opacity:.08
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.x = -Math.PI/2;
+  mesh.position.y = -45;
+  return mesh;
+}
+scene.add(createGrid());
+
+// ── INTERACTION STATE ──────────────────────────────────────────────
+let isDragging     = false;
+let prevMouse      = { x:0, y:0 };
+let cameraTheta    = 0;
+let cameraPhi      = Math.PI/6;
+let cameraRadius   = 80;
+let targetTheta    = 0;
+let targetPhi      = Math.PI/6;
+let targetRadius   = 80;
+let mouseParallax  = { x:0, y:0 };
+let selectedAgent  = null;
+let hoveredAgent   = null;
+let frameCount     = 0;
+let lastFpsTime    = performance.now();
+let entered        = false;
+
+const cursor     = document.getElementById('cursor');
+const cursorRing = document.getElementById('cursor-ring');
+
+// Mouse tracking
+document.addEventListener('mousemove', e => {
+  const x = e.clientX, y = e.clientY;
+  cursor.style.transform     = `translate(${x-6}px,${y-6}px)`;
+  cursorRing.style.transform = `translate(${x-18}px,${y-18}px)`;
+  mouseParallax.x = (x/W - .5) * 2;
+  mouseParallax.y = (y/H - .5) * 2;
+  mouse.x =  (x/W)*2 - 1;
+  mouse.y = -(y/H)*2 + 1;
+
+  if (isDragging) {
+    const dx = x - prevMouse.x;
+    const dy = y - prevMouse.y;
+    targetTheta -= dx * .005;
+    targetPhi   = Math.max(.1, Math.min(Math.PI*.7, targetPhi + dy*.005));
+    prevMouse = {x, y};
+  }
+});
+
+document.addEventListener('mousedown', e => {
+  if (e.target === renderer.domElement) {
+    isDragging = true;
+    prevMouse  = {x:e.clientX, y:e.clientY};
+  }
+});
+document.addEventListener('mouseup', () => isDragging = false);
+
+document.addEventListener('wheel', e => {
+  targetRadius = Math.max(25, Math.min(160, targetRadius + e.deltaY * .08));
+}, {passive:true});
+
+// Click — select agent
+document.addEventListener('click', e => {
+  if (!entered) return;
+  raycaster.setFromCamera(mouse, camera);
+  // Test mastermind
+  const mmHits = raycaster.intersectObjects(mastermind.children, false);
+  if (mmHits.length) { showPanel(mastermind.userData); return; }
+  // Test agents
+  const hits = raycaster.intersectObjects(agentMeshes, false);
+  if (hits.length) { showPanel(hits[0].object.userData); return; }
+  closePanel();
+});
+
+// ── INFO PANEL ─────────────────────────────────────────────────────
+const panel = document.getElementById('info-panel');
+function showPanel(data) {
+  document.getElementById('info-name').textContent  = data.name;
+  document.getElementById('info-role').textContent  = data.role || `${data.team?.toUpperCase() || ''} · ${data.type}`;
+  document.getElementById('info-type').textContent  = data.type   || '—';
+  document.getElementById('info-risk').textContent  = data.risk   || '—';
+  document.getElementById('info-alloc').textContent = data.alloc ? data.alloc+'%' : '—';
+  document.getElementById('info-desc').textContent  = data.desc   || '—';
+  document.getElementById('info-bar').style.width   = (data.alloc||70)+'%';
+  const active = data.isMastermind || Math.random() > .3;
+  const statusEl = document.getElementById('info-status');
+  statusEl.textContent = active ? 'ACTIVE' : 'STANDBY';
+  statusEl.style.color = active ? '#C6F135' : 'rgba(255,255,255,.3)';
+  panel.classList.add('visible');
+  selectedAgent = data;
+}
+function closePanel() {
+  panel.classList.remove('visible');
+  selectedAgent = null;
+}
+window.closePanel = closePanel;
+
+// ── ENTER SCENE ─────────────────────────────────────────────────────
+function enterScene() {
+  entered = true;
+  const intro = document.getElementById('intro');
+  intro.classList.add('fade');
+  setTimeout(() => intro.style.display='none', 1300);
+}
+window.enterScene = enterScene;
+
+// ── REGIME CYCLING ─────────────────────────────────────────────────
+let regimeIdx = 0;
+setInterval(() => {
+  regimeIdx = (regimeIdx + 1) % REGIME_LABELS.length;
+  const label = REGIME_LABELS[regimeIdx];
+  document.getElementById('regime-live').textContent   = label;
+  document.getElementById('regime-badge').textContent  = 'REGIME: ' + label;
+}, 8000);
+
+// ── CLOCK / FPS ────────────────────────────────────────────────────
+function updateFps() {
+  frameCount++;
+  const now = performance.now();
+  if (now - lastFpsTime > 1000) {
+    document.getElementById('fps-counter').textContent = frameCount + ' FPS';
+    frameCount = 0;
+    lastFpsTime = now;
+  }
+}
+
+// ── ANIMATE ────────────────────────────────────────────────────────
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  // Smooth camera
+  cameraTheta  += (targetTheta  - cameraTheta)  * .06;
+  cameraPhi    += (targetPhi    - cameraPhi)    * .06;
+  cameraRadius += (targetRadius - cameraRadius) * .08;
+
+  const parallaxX = mouseParallax.x * 3;
+  const parallaxY = mouseParallax.y * 2;
+
+  camera.position.x = Math.sin(cameraTheta) * Math.sin(cameraPhi) * cameraRadius + parallaxX;
+  camera.position.y = Math.cos(cameraPhi)   * cameraRadius + parallaxY;
+  camera.position.z = Math.cos(cameraTheta) * Math.sin(cameraPhi) * cameraRadius;
+  camera.lookAt(0, 0, 0);
+
+  // Mastermind rotation
+  mastermind.children[0].rotation.x += .003;
+  mastermind.children[0].rotation.y += .005;
+  mastermind.children[1].rotation.x -= .004;
+  mastermind.children[1].rotation.z += .006;
+  mastermind.children[2].rotation.y += .007;
+  mastermind.children[2].rotation.z += .003;
+
+  // Orbital rings
+  mastermind.children[4].rotation.z += .004;
+  mastermind.children[5].rotation.x += .003;
+  mastermind.children[6].rotation.y += .005;
+
+  // Mastermind glow pulse
+  const glowPulse = .03 + Math.sin(t * 1.5) * .015;
+  mastermind.children[3].material.opacity = glowPulse;
+
+  // Center light pulse
+  limeLight.intensity = 3 + Math.sin(t * 2) * 1;
+
+  // Agent orbits + rotations
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(agentMeshes, false);
+  const newHover = hits.length ? hits[0].object : null;
+
+  if (newHover !== hoveredAgent) {
+    if (hoveredAgent) {
+      hoveredAgent.material.emissiveIntensity = hoveredAgent.userData.baseEmissive;
+      hoveredAgent.userData.wireMesh.material.opacity = .4;
+      cursor.classList.remove('hover');
+      cursorRing.classList.remove('hover');
+    }
+    hoveredAgent = newHover;
+    if (hoveredAgent) {
+      hoveredAgent.material.emissiveIntensity = 1.2;
+      hoveredAgent.userData.wireMesh.material.opacity = .9;
+      cursor.classList.add('hover');
+      cursorRing.classList.add('hover');
+    }
+  }
+
+  agentMeshes.forEach((mesh, i) => {
+    const ud = mesh.userData;
+    ud.orbitAngle += ud.orbitSpeed;
+
+    mesh.position.x = Math.cos(ud.orbitAngle) * ud.orbitRadius;
+    mesh.position.z = Math.sin(ud.orbitAngle) * ud.orbitRadius;
+    mesh.position.y = ud.orbitHeight + Math.sin(t * .4 + i) * 1.5;
+
+    mesh.rotation.x += ud.rotSpeed.x;
+    mesh.rotation.y += ud.rotSpeed.y;
+    mesh.rotation.z += ud.rotSpeed.z;
+
+    // Glow aura flicker
+    const flicker = Math.sin(t * 2 + i * .7) * .015;
+    mesh.userData.glowMesh.material.opacity = .04 + flicker;
+  });
+
+  // Update connection lines
+  connectionLines.forEach(line => {
+    const pts = [
+      new THREE.Vector3(0,0,0),
+      line.userData.agentMesh.position.clone()
+    ];
+    line.geometry.setFromPoints(pts);
+    line.geometry.attributes.position.needsUpdate = true;
+  });
+
+  // Particle drift
+  particles.rotation.y += .0003;
+  particles.rotation.x += .0001;
+
+  // Lights follow slowly
+  blueLight.position.x   = Math.sin(t * .3) * 80;
+  blueLight.position.z   = Math.cos(t * .3) * 80;
+  violetLight.position.x = Math.sin(t * .3 + Math.PI) * 80;
+  violetLight.position.z = Math.cos(t * .3 + Math.PI) * 80;
+
+  updateFps();
+  renderer.render(scene, camera);
+}
+
+// ── RESIZE ─────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ── KEYBOARD ───────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closePanel();
+  if (e.key === 'Enter' && !entered) enterScene();
+  if (e.key === ' ') { targetTheta = 0; targetPhi = Math.PI/6; targetRadius = 80; }
+});
+
+// ── START ───────────────────────────────────────────────────────────
+animate();
+</script>
+</body>
+</html>
